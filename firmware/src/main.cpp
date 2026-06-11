@@ -35,16 +35,18 @@ bool sdReady = false;
 // ---------------------------------------------------------------------
 
 void drawHeader(const char* title) {
-    M5.Lcd.fillRect(0, 0, 320, 24, THEME_ACCENT);
-    M5.Lcd.setTextColor(THEME_HILIGHT, THEME_ACCENT);
+    M5.Lcd.fillRect(0, 0, 320, 24, THEME_BG);
+    M5.Lcd.drawFastHLine(0, 23, 320, THEME_ACCENT);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(8, 4);
     M5.Lcd.print(title);
 }
 
 void drawFooter(const char* a, const char* b, const char* c) {
-    M5.Lcd.fillRect(0, 216, 320, 24, THEME_ACCENT);
-    M5.Lcd.setTextColor(THEME_HILIGHT, THEME_ACCENT);
+    M5.Lcd.fillRect(0, 216, 320, 24, THEME_BG);
+    M5.Lcd.drawFastHLine(0, 216, 320, THEME_ACCENT);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(8, 220);
     M5.Lcd.print(a);
@@ -104,10 +106,14 @@ void drawFileScreen() {
             int y = LIST_TOP + i * ROW_HEIGHT;
             bool selected = (idx == selectedIndex);
 
-            M5.Lcd.fillRoundRect(8, y, 304, ROW_HEIGHT - 2, 4,
-                                  selected ? THEME_SELECT : THEME_PANEL);
-            M5.Lcd.setTextColor(selected ? THEME_HILIGHT : THEME_TEXT,
-                                 selected ? THEME_SELECT : THEME_PANEL);
+            if (selected) {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_SELECT);
+                M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
+            } else {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_BG);
+                M5.Lcd.drawRect(8, y, 304, ROW_HEIGHT - 2, THEME_ACCENT);
+                M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+            }
             M5.Lcd.setTextSize(2);
             M5.Lcd.setCursor(16, y + 3);
 
@@ -124,14 +130,15 @@ void drawPetScreen() {
     M5.Lcd.fillScreen(THEME_BG);
     drawHeader("Kawazu Kumite");
 
-    M5.Lcd.fillRoundRect(20, 40, 280, 150, 8, THEME_PANEL);
-    frog.draw(160, 120);
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_BG);
+    M5.Lcd.drawRect(20, 40, 280, 150, THEME_ACCENT);
+    frog.draw(160, 110);
 
-    M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
     M5.Lcd.setTextSize(1);
-    M5.Lcd.setCursor(30, 165);
-    M5.Lcd.print("Sage Mode frog companion - always watching");
-    M5.Lcd.setCursor(30, 178);
+    M5.Lcd.setCursor(30, 172);
+    M5.Lcd.print("Sage Mode toad companion - always watching");
+    M5.Lcd.setCursor(30, 184);
     M5.Lcd.print("your files for you.");
 
     drawFooter("", "FILES:B", "");
@@ -202,8 +209,9 @@ void handleUpload() {
 
         // Progress bar
         int pct = (int)(100 - (remaining * 100 / fileSize));
-        M5.Lcd.fillRect(16, 100, 288, 20, THEME_PANEL);
-        M5.Lcd.fillRect(16, 100, 288 * pct / 100, 20, THEME_SELECT);
+        M5.Lcd.fillRect(16, 100, 288, 20, THEME_BG);
+        M5.Lcd.drawRect(16, 100, 288, 20, THEME_ACCENT);
+        M5.Lcd.fillRect(18, 102, (288 - 4) * pct / 100, 16, THEME_SELECT);
         M5.Lcd.setCursor(16, 130);
         M5.Lcd.printf("%d%%   ", pct);
     }
@@ -262,8 +270,8 @@ void loop() {
             drawFileScreen();
         }
         frog.update();
-        M5.Lcd.fillRoundRect(20, 40, 280, 150, 8, THEME_PANEL);
-        frog.draw(160, 120);
+        M5.Lcd.fillRect(21, 41, 278, 148, THEME_BG);
+        frog.draw(160, 110);
         delay(16); // ~60fps redraw for the pet animation
     }
 }

@@ -2,17 +2,33 @@
 #include <M5Stack.h>
 #include "theme.h"
 
-// "Kawazu Kumite" - a small sage-mode frog companion.
-// Drawn procedurally so no image assets are needed.
+// "Kawazu Kumite" - a pixel-art sage-mode toad companion, drawn in the
+// blocky orange-on-black "Bruce" style. The sprite is a fixed 16x14 grid
+// of color codes, scaled up into chunky pixels.
+//
+// Legend:
+//   . = transparent (background shows through)
+//   D = dark brown outline / eyebrows / mouth
+//   O = toad orange (body)
+//   E = eyebrow (dark)
+//   W = eye white
+//   B = pupil
+//   V = vest strap (blue-grey)
+//   C = cream belly
+//   M = mouth (dark)
 class Frog {
 public:
+    static const int COLS = 16;
+    static const int ROWS = 14;
+    static const int PIXEL = 9; // on-screen size of one sprite "pixel"
+
     void update() {
         uint32_t now = millis();
 
-        // Breathing bob (slow vertical sine-ish motion)
-        bobOffset = (sin(now / 600.0) * 4.0);
+        // Slow vertical bob
+        bobOffset = (int)(sin(now / 600.0) * 3.0);
 
-        // Blink every ~3.5s, blink lasts 150ms
+        // Blink every ~3.5s, lasts 150ms
         if (!blinking && now - lastBlink > 3500) {
             blinking = true;
             lastBlink = now;
@@ -33,53 +49,69 @@ public:
         }
     }
 
-    // Draw the frog centered at (cx, cy)
+    // Draw the sprite centered at (cx, cy)
     void draw(int cx, int cy) {
-        int by = cy + (int)bobOffset;
+        static const char* SPRITE[ROWS] = {
+            ".....DDDDDD.....",
+            "....DOODDOOD....",
+            "...DEEODDOEED...",
+            "...DWBODDOBWD...",
+            "...DOOODDOOOD...",
+            "..DOVOODDOOVOD..",
+            ".DOOVOODDOOVOOD.",
+            "DOOOOOOMMOOOOOOD",
+            "DOOCCCCCCCCCCOOD",
+            "DOCCCCCCCCCCCCOD",
+            "DOVVVVVVVVVVVVOD",
+            "DOOOOOOOOOOOOOOD",
+            "DDOOOOOOOOOOOODD",
+            ".DDDDDDDDDDDDDD.",
+        };
 
-        // Body
-        M5.Lcd.fillEllipse(cx, by + 10, 38, 26, FROG_BODY);
-        // Belly
-        M5.Lcd.fillEllipse(cx, by + 18, 24, 14, FROG_BELLY);
+        int originX = cx - (COLS * PIXEL) / 2;
+        int originY = cy - (ROWS * PIXEL) / 2 + bobOffset;
 
-        // Sage-mode markings around eyes (orange rings)
-        M5.Lcd.fillCircle(cx - 18, by - 14, 13, FROG_EYE_RING);
-        M5.Lcd.fillCircle(cx + 18, by - 14, 13, FROG_EYE_RING);
+        for (int r = 0; r < ROWS; r++) {
+            for (int c = 0; c < COLS; c++) {
+                char cell = SPRITE[r][c];
+                if (cell == '.') continue;
 
-        // Eye whites (or closed line if blinking)
-        if (blinking) {
-            M5.Lcd.drawFastHLine(cx - 25, by - 14, 14, THEME_TEXT);
-            M5.Lcd.drawFastHLine(cx + 11, by - 14, 14, THEME_TEXT);
-        } else {
-            M5.Lcd.fillCircle(cx - 18, by - 14, 9, THEME_HILIGHT);
-            M5.Lcd.fillCircle(cx + 18, by - 14, 9, THEME_HILIGHT);
-            // Pupils
-            M5.Lcd.fillCircle(cx - 18, by - 14, 4, THEME_TEXT);
-            M5.Lcd.fillCircle(cx + 18, by - 14, 4, THEME_TEXT);
+                // Eyes are on row 3; close them when blinking
+                if (blinking && r == 3 && (cell == 'W' || cell == 'B')) {
+                    cell = 'D';
+                }
+
+                M5.Lcd.fillRect(originX + c * PIXEL, originY + r * PIXEL,
+                                 PIXEL, PIXEL, colorFor(cell));
+            }
         }
 
-        // Front legs / hands resting on belly
-        M5.Lcd.fillCircle(cx - 20, by + 26, 7, FROG_BODY);
-        M5.Lcd.fillCircle(cx + 20, by + 26, 7, FROG_BODY);
-
-        // Mouth (simple smiling line)
-        M5.Lcd.drawFastHLine(cx - 12, by + 8, 24, THEME_TEXT);
-        M5.Lcd.drawPixel(cx - 13, by + 7, THEME_TEXT);
-        M5.Lcd.drawPixel(cx + 13, by + 7, THEME_TEXT);
-
-        // Tongue flick
+        // Tongue flick below the mouth
         if (tongueOut) {
-            M5.Lcd.fillRoundRect(cx - 4, by + 14, 8, 16, 3, FROG_MARK);
+            int tx = originX + 7 * PIXEL;
+            int ty = originY + 8 * PIXEL;
+            M5.Lcd.fillRect(tx, ty, PIXEL * 2, PIXEL * 2, FROG_TONGUE);
         }
-
-        // Sage mode marking on forehead (a small swirl dot)
-        M5.Lcd.fillCircle(cx, by - 30, 4, FROG_MARK);
     }
 
     const char* name() const { return "Kawazu Kumite"; }
 
 private:
-    float bobOffset = 0;
+    static uint16_t colorFor(char cell) {
+        switch (cell) {
+            case 'D': return FROG_DARK;
+            case 'O': return FROG_BODY;
+            case 'E': return FROG_DARK;
+            case 'W': return FROG_EYE;
+            case 'B': return FROG_PUPIL;
+            case 'V': return FROG_VEST;
+            case 'C': return FROG_BELLY;
+            case 'M': return FROG_DARK;
+            default:  return THEME_BG;
+        }
+    }
+
+    int bobOffset = 0;
     bool blinking = false;
     bool tongueOut = false;
     uint32_t lastBlink = 0;
