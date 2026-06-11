@@ -4,10 +4,10 @@
 #include "frog.h"
 
 // ---------------------------------------------------------------------
-// Kawazu Kumite - M5Stack Core firmware
+// CANON - M5Stack Core firmware
 //   - Light-blue, Flipper-Zero-style file browser for the SD card
 //   - Files are pushed from a PC over USB serial (see uploader/upload.py)
-//   - A small sage-mode frog companion lives on its own screen
+//   - A small sage-mode frog companion, Kawazu Kumite, lives on its own screen
 // ---------------------------------------------------------------------
 
 #define UPLOAD_DIR "/uploads"
@@ -76,7 +76,7 @@ void refreshFileList() {
 
 void drawFileScreen() {
     M5.Lcd.fillScreen(THEME_BG);
-    drawHeader("Kawazu Kumite - Files");
+    drawHeader("CANON - Files");
 
     if (!sdReady) {
         M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);

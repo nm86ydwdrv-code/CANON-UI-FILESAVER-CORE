@@ -1,4 +1,4 @@
-# Kawazu Kumite
+# CANON
 
 A light-blue, Flipper-Zero-style file browser for the **M5Stack Core (Basic)**,
 with a sage-mode frog companion named **Kawazu Kumite** living on its own screen.
