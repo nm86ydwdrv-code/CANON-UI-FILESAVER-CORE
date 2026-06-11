@@ -230,19 +230,35 @@ void drawFooter(const char* a, const char* b, const char* c) {
 // without sliding.
 // ---------------------------------------------------------------------
 
+// The content area (between header and footer) is 192px tall, but a single
+// 320x192x16bpp sprite (~123KB) doesn't reliably fit in the largest
+// contiguous free heap block on the M5Stack Core (no PSRAM, ~110KB).
+// Instead we use one 320x96 sprite and render each screen in two vertical
+// passes (top half / bottom half), pushing each half to its place on the
+// real display.
 TFT_eSprite canvas = TFT_eSprite(&M5.Lcd);
 const int CANVAS_TOP = 24;
-const int CANVAS_H = 192; // 216 - 24
+const int CANVAS_H = 96;            // sprite height (one half of content area)
+const int CANVAS_TOP2 = CANVAS_TOP + CANVAS_H; // top of the second half
 
-void pushCanvas() {
-    canvas.pushSprite(0, CANVAS_TOP);
+typedef void (*ContentFn)(int yShift);
+
+void renderHalves(ContentFn fn, int x) {
+    fn(0);
+    canvas.pushSprite(x, CANVAS_TOP);
+    fn(CANVAS_H);
+    canvas.pushSprite(x, CANVAS_TOP2);
 }
 
-void slideInCanvas() {
+void slideInContent(ContentFn fn) {
     for (int x = 320; x > 0; x -= 40) {
-        canvas.pushSprite(x, CANVAS_TOP);
+        renderHalves(fn, x);
     }
-    canvas.pushSprite(0, CANVAS_TOP);
+    renderHalves(fn, 0);
+}
+
+void pushContent(ContentFn fn) {
+    renderHalves(fn, 0);
 }
 
 // ---------------------------------------------------------------------
@@ -264,18 +280,14 @@ void drawMenuIcon(TFT_eSPI& gfx, int i, int x, int y) {
     }
 }
 
-void drawMenuScreen(bool animate = true) {
-    drawHeader("CANON");
+void drawMenuContent(int yShift) {
     canvas.fillSprite(THEME_BG);
-
-    if (selectedMenu < menuScroll) menuScroll = selectedMenu;
-    if (selectedMenu >= menuScroll + MENU_VISIBLE) menuScroll = selectedMenu - MENU_VISIBLE + 1;
 
     for (int row = 0; row < MENU_VISIBLE; row++) {
         int i = menuScroll + row;
         if (i >= MENU_COUNT) break;
 
-        int y = (LIST_TOP - CANVAS_TOP) + row * MENU_ITEM_GAP;
+        int y = (LIST_TOP - CANVAS_TOP - yShift) + row * MENU_ITEM_GAP;
         bool selected = (i == selectedMenu);
 
         if (selected) {
@@ -292,9 +304,16 @@ void drawMenuScreen(bool animate = true) {
         canvas.setCursor(48, y + 9);
         canvas.print(MENU_ITEMS[i]);
     }
+}
+
+void drawMenuScreen(bool animate = true) {
+    drawHeader("CANON");
+
+    if (selectedMenu < menuScroll) menuScroll = selectedMenu;
+    if (selectedMenu >= menuScroll + MENU_VISIBLE) menuScroll = selectedMenu - MENU_VISIBLE + 1;
 
     drawFooter("UP:A", "OPEN:B", "DOWN:C");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawMenuContent); else pushContent(drawMenuContent);
 }
 
 // ---------------------------------------------------------------------
@@ -322,28 +341,24 @@ void refreshFileList() {
     if (selectedFile >= fileCount) selectedFile = max(0, fileCount - 1);
 }
 
-void drawFileScreen(bool animate = true) {
-    drawHeader("CANON - Files");
+void drawFileContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
     if (fileCount == 0) {
         canvas.setTextColor(THEME_TEXT, THEME_BG);
         canvas.setTextSize(2);
-        canvas.setCursor(20, 90 - CANVAS_TOP);
+        canvas.setCursor(20, 90 - CANVAS_TOP - yShift);
         canvas.print("No files yet.");
-        canvas.setCursor(20, 120 - CANVAS_TOP);
+        canvas.setCursor(20, 120 - CANVAS_TOP - yShift);
         canvas.print("Plug into PC and run");
-        canvas.setCursor(20, 145 - CANVAS_TOP);
+        canvas.setCursor(20, 145 - CANVAS_TOP - yShift);
         canvas.print("uploader/upload.py");
     } else {
-        if (selectedFile < scrollOffset) scrollOffset = selectedFile;
-        if (selectedFile >= scrollOffset + VISIBLE_ROWS) scrollOffset = selectedFile - VISIBLE_ROWS + 1;
-
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = scrollOffset + i;
             if (idx >= fileCount) break;
 
-            int y = (LIST_TOP - CANVAS_TOP) + i * ROW_HEIGHT;
+            int y = (LIST_TOP - CANVAS_TOP - yShift) + i * ROW_HEIGHT;
             bool selected = (idx == selectedFile);
 
             if (selected) {
@@ -361,30 +376,41 @@ void drawFileScreen(bool animate = true) {
             canvas.print(name);
         }
     }
+}
+
+void drawFileScreen(bool animate = true) {
+    drawHeader("CANON - Files");
+
+    if (fileCount > 0) {
+        if (selectedFile < scrollOffset) scrollOffset = selectedFile;
+        if (selectedFile >= scrollOffset + VISIBLE_ROWS) scrollOffset = selectedFile - VISIBLE_ROWS + 1;
+    }
 
     drawFooter("UP:A", "BACK:B", "DOWN:C");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawFileContent); else pushContent(drawFileContent);
 }
 
 // ---------------------------------------------------------------------
 // Pet screen
 // ---------------------------------------------------------------------
 
-void drawPetScreen() {
-    drawHeader("Kawazu Kumite");
+void drawPetContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
 
     canvas.setTextColor(THEME_TEXT, THEME_PANEL);
     canvas.setTextSize(1);
-    canvas.setCursor(30, 172 - CANVAS_TOP);
+    canvas.setCursor(30, 172 - CANVAS_TOP - yShift);
     canvas.print("Sage Mode toad companion - always watching");
-    canvas.setCursor(30, 184 - CANVAS_TOP);
+    canvas.setCursor(30, 184 - CANVAS_TOP - yShift);
     canvas.print("your files for you.");
+}
 
+void drawPetScreen() {
+    drawHeader("Kawazu Kumite");
     drawFooter("", "BACK:B", "");
-    slideInCanvas();
+    slideInContent(drawPetContent);
     frog.draw(160, 110);
 }
 
@@ -392,12 +418,15 @@ void drawPetScreen() {
 // Rasengan screen
 // ---------------------------------------------------------------------
 
+void drawRasenganContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
+}
+
 void drawRasenganScreen() {
     drawHeader("Rasengan");
-    canvas.fillSprite(THEME_BG);
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
     drawFooter("", "BACK:B", "");
-    slideInCanvas();
+    slideInContent(drawRasenganContent);
     rasengan.draw(160, 115, 60);
 }
 
@@ -405,12 +434,15 @@ void drawRasenganScreen() {
 // Getsuga Tensho screen (Bleach)
 // ---------------------------------------------------------------------
 
+void drawGetsugaContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
+}
+
 void drawGetsugaScreen() {
     drawHeader("Getsuga Tensho");
-    canvas.fillSprite(THEME_BG);
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
     drawFooter("", "BACK:B", "");
-    slideInCanvas();
+    slideInContent(drawGetsugaContent);
     getsuga.draw(160, 115, 55);
 }
 
@@ -418,12 +450,15 @@ void drawGetsugaScreen() {
 // Hollow Mask screen (Bleach)
 // ---------------------------------------------------------------------
 
+void drawHollowContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
+}
+
 void drawHollowScreen() {
     drawHeader("Hollow Mask");
-    canvas.fillSprite(THEME_BG);
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
     drawFooter("", "BACK:B", "");
-    slideInCanvas();
+    slideInContent(drawHollowContent);
     hollowMask.draw(160, 115);
 }
 
@@ -431,29 +466,31 @@ void drawHollowScreen() {
 // WiFi captive portal screen
 // ---------------------------------------------------------------------
 
-void drawPortalScreen(bool animate = true) {
-    drawHeader("WiFi Portal");
+void drawPortalContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
     canvas.setTextColor(THEME_TEXT, THEME_PANEL);
     canvas.setTextSize(2);
 
-    canvas.setCursor(32, 56 - CANVAS_TOP);
+    canvas.setCursor(32, 56 - CANVAS_TOP - yShift);
     canvas.print("Network:");
-    canvas.setCursor(32, 80 - CANVAS_TOP);
+    canvas.setCursor(32, 80 - CANVAS_TOP - yShift);
     canvas.print(PORTAL_AP_NAME);
 
-    canvas.setCursor(32, 116 - CANVAS_TOP);
+    canvas.setCursor(32, 116 - CANVAS_TOP - yShift);
     canvas.print("Address:");
-    canvas.setCursor(32, 140 - CANVAS_TOP);
+    canvas.setCursor(32, 140 - CANVAS_TOP - yShift);
     canvas.print(portal.getIP().toString());
 
-    canvas.setCursor(32, 168 - CANVAS_TOP);
+    canvas.setCursor(32, 168 - CANVAS_TOP - yShift);
     canvas.printf("Logins captured: %d", portal.getCaptureCount());
+}
 
+void drawPortalScreen(bool animate = true) {
+    drawHeader("WiFi Portal");
     drawFooter("", "STOP:B", "");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawPortalContent); else pushContent(drawPortalContent);
 }
 
 // ---------------------------------------------------------------------
@@ -468,15 +505,18 @@ int wifiCount = 0;
 int wifiSelected = 0;
 int wifiScroll = 0;
 
-void scanWifiNetworks() {
-    drawHeader("WiFi Scanner");
+void drawScanningContent(int yShift) {
     canvas.fillSprite(THEME_BG);
     canvas.setTextColor(THEME_TEXT, THEME_BG);
     canvas.setTextSize(2);
-    canvas.setCursor(20, 100 - CANVAS_TOP);
+    canvas.setCursor(20, 100 - CANVAS_TOP - yShift);
     canvas.print("Scanning...");
+}
+
+void scanWifiNetworks() {
+    drawHeader("WiFi Scanner");
     drawFooter("", "", "");
-    pushCanvas();
+    pushContent(drawScanningContent);
 
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
@@ -499,24 +539,20 @@ void scanWifiNetworks() {
     wifiScroll = 0;
 }
 
-void drawWifiScanScreen(bool animate = true) {
-    drawHeader("WiFi Scanner");
+void drawWifiScanContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
     if (wifiCount == 0) {
         canvas.setTextColor(THEME_TEXT, THEME_BG);
         canvas.setTextSize(2);
-        canvas.setCursor(20, 100 - CANVAS_TOP);
+        canvas.setCursor(20, 100 - CANVAS_TOP - yShift);
         canvas.print("No networks found.");
     } else {
-        if (wifiSelected < wifiScroll) wifiScroll = wifiSelected;
-        if (wifiSelected >= wifiScroll + VISIBLE_ROWS) wifiScroll = wifiSelected - VISIBLE_ROWS + 1;
-
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = wifiScroll + i;
             if (idx >= wifiCount) break;
 
-            int y = (LIST_TOP - CANVAS_TOP) + i * ROW_HEIGHT;
+            int y = (LIST_TOP - CANVAS_TOP - yShift) + i * ROW_HEIGHT;
             bool selected = (idx == wifiSelected);
 
             if (selected) {
@@ -534,9 +570,18 @@ void drawWifiScanScreen(bool animate = true) {
             canvas.printf("%s%-17s%4ddBm", wifiSecure[idx] ? "*" : " ", name.c_str(), wifiRSSI[idx]);
         }
     }
+}
+
+void drawWifiScanScreen(bool animate = true) {
+    drawHeader("WiFi Scanner");
+
+    if (wifiCount > 0) {
+        if (wifiSelected < wifiScroll) wifiScroll = wifiSelected;
+        if (wifiSelected >= wifiScroll + VISIBLE_ROWS) wifiScroll = wifiSelected - VISIBLE_ROWS + 1;
+    }
 
     drawFooter("UP:A", "BACK:B", "DOWN:C");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawWifiScanContent); else pushContent(drawWifiScanContent);
 }
 
 // ---------------------------------------------------------------------
@@ -554,13 +599,8 @@ bool bleInited = false;
 
 void scanBleDevices() {
     drawHeader("BLE Scanner");
-    canvas.fillSprite(THEME_BG);
-    canvas.setTextColor(THEME_TEXT, THEME_BG);
-    canvas.setTextSize(2);
-    canvas.setCursor(20, 100 - CANVAS_TOP);
-    canvas.print("Scanning...");
     drawFooter("", "", "");
-    pushCanvas();
+    pushContent(drawScanningContent);
 
     if (!bleInited) {
         NimBLEDevice::init("");
@@ -587,24 +627,20 @@ void scanBleDevices() {
     bleScroll = 0;
 }
 
-void drawBleScanScreen(bool animate = true) {
-    drawHeader("BLE Scanner");
+void drawBleScanContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
     if (bleCount == 0) {
         canvas.setTextColor(THEME_TEXT, THEME_BG);
         canvas.setTextSize(2);
-        canvas.setCursor(20, 100 - CANVAS_TOP);
+        canvas.setCursor(20, 100 - CANVAS_TOP - yShift);
         canvas.print("No BLE devices found.");
     } else {
-        if (bleSelected < bleScroll) bleScroll = bleSelected;
-        if (bleSelected >= bleScroll + VISIBLE_ROWS) bleScroll = bleSelected - VISIBLE_ROWS + 1;
-
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = bleScroll + i;
             if (idx >= bleCount) break;
 
-            int y = (LIST_TOP - CANVAS_TOP) + i * ROW_HEIGHT;
+            int y = (LIST_TOP - CANVAS_TOP - yShift) + i * ROW_HEIGHT;
             bool selected = (idx == bleSelected);
 
             if (selected) {
@@ -624,9 +660,18 @@ void drawBleScanScreen(bool animate = true) {
             canvas.printf("RSSI: %d dBm", bleRSSI[idx]);
         }
     }
+}
+
+void drawBleScanScreen(bool animate = true) {
+    drawHeader("BLE Scanner");
+
+    if (bleCount > 0) {
+        if (bleSelected < bleScroll) bleScroll = bleSelected;
+        if (bleSelected >= bleScroll + VISIBLE_ROWS) bleScroll = bleSelected - VISIBLE_ROWS + 1;
+    }
 
     drawFooter("UP:A", "BACK:B", "DOWN:C");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawBleScanContent); else pushContent(drawBleScanContent);
 }
 
 // ---------------------------------------------------------------------
@@ -679,18 +724,17 @@ void irSendNEC(uint32_t code) {
     digitalWrite(IR_PIN, LOW);
 }
 
-void drawIrScreen(bool animate = true) {
-    drawHeader("IR Remote");
+void drawIrContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
     canvas.setTextColor(THEME_TEXT, THEME_PANEL);
     canvas.setTextSize(2);
-    canvas.setCursor(32, 50 - CANVAS_TOP);
+    canvas.setCursor(32, 50 - CANVAS_TOP - yShift);
     canvas.print("Send IR power code:");
 
     for (int i = 0; i < IR_CODE_COUNT; i++) {
-        int y = (80 - CANVAS_TOP) + i * 24;
+        int y = (80 - CANVAS_TOP - yShift) + i * 24;
         bool selected = (i == irSelected);
         canvas.setTextColor(selected ? THEME_SELTEXT : THEME_TEXT, selected ? THEME_SELECT : THEME_PANEL);
         if (selected) canvas.fillRect(28, y - 2, 264, 22, THEME_SELECT);
@@ -701,12 +745,15 @@ void drawIrScreen(bool animate = true) {
 
     if (millis() - irSentAt < 800) {
         canvas.setTextColor(THEME_ACCENT, THEME_PANEL);
-        canvas.setCursor(32, 175 - CANVAS_TOP);
+        canvas.setCursor(32, 175 - CANVAS_TOP - yShift);
         canvas.print("Sent!");
     }
+}
 
+void drawIrScreen(bool animate = true) {
+    drawHeader("IR Remote");
     drawFooter("UP:A", "SELECT:B", "DOWN:C");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawIrContent); else pushContent(drawIrContent);
 }
 
 // ---------------------------------------------------------------------
@@ -728,30 +775,32 @@ void scanI2C() {
     }
 }
 
-void drawI2CScreen(bool animate = true) {
-    drawHeader("I2C Scanner");
+void drawI2CContent(int yShift) {
     canvas.fillSprite(THEME_BG);
 
-    canvas.fillRect(20, 40 - CANVAS_TOP, 280, 150, THEME_PANEL);
+    canvas.fillRect(20, 40 - CANVAS_TOP - yShift, 280, 150, THEME_PANEL);
     canvas.setTextColor(THEME_TEXT, THEME_PANEL);
     canvas.setTextSize(2);
 
     if (i2cCount == 0) {
-        canvas.setCursor(32, 56 - CANVAS_TOP);
+        canvas.setCursor(32, 56 - CANVAS_TOP - yShift);
         canvas.print("No I2C devices found");
-        canvas.setCursor(32, 80 - CANVAS_TOP);
+        canvas.setCursor(32, 80 - CANVAS_TOP - yShift);
         canvas.print("on Grove port (21/22).");
     } else {
-        canvas.setCursor(32, 50 - CANVAS_TOP);
+        canvas.setCursor(32, 50 - CANVAS_TOP - yShift);
         canvas.printf("%d device(s) found:", i2cCount);
         for (int i = 0; i < i2cCount && i < 6; i++) {
-            canvas.setCursor(32, (76 - CANVAS_TOP) + i * 18);
+            canvas.setCursor(32, (76 - CANVAS_TOP - yShift) + i * 18);
             canvas.printf("0x%02X", i2cAddrs[i]);
         }
     }
+}
 
+void drawI2CScreen(bool animate = true) {
+    drawHeader("I2C Scanner");
     drawFooter("BACK:A", "RESCAN:B", "");
-    if (animate) slideInCanvas(); else pushCanvas();
+    if (animate) slideInContent(drawI2CContent); else pushContent(drawI2CContent);
 }
 
 // ---------------------------------------------------------------------
