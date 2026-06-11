@@ -4,6 +4,7 @@
 #include "frog.h"
 #include "rasengan.h"
 #include "bleach.h"
+#include "captive_portal.h"
 
 // ---------------------------------------------------------------------
 // CANON - M5Stack Core firmware
@@ -23,7 +24,8 @@ enum AppState {
     STATE_PET,
     STATE_RASENGAN,
     STATE_GETSUGA,
-    STATE_HOLLOW
+    STATE_HOLLOW,
+    STATE_PORTAL
 };
 AppState state = STATE_MENU;
 
@@ -31,6 +33,9 @@ Frog frog;
 Rasengan rasengan;
 GetsugaTensho getsuga;
 HollowMask hollowMask;
+CaptivePortal portal;
+const char* PORTAL_AP_NAME = "CANON-Portal";
+int lastPortalCaptures = -1;
 
 // File list state
 String fileNames[64];
@@ -48,10 +53,12 @@ const char* MENU_ITEMS[] = {
     "Rasengan",
     "Getsuga Tensho",
     "Hollow Mask",
+    "WiFi Portal",
 };
-const int MENU_COUNT = 5;
-const int MENU_ITEM_H = 32;
-const int MENU_ITEM_GAP = 36;
+const int MENU_COUNT = 6;
+const int MENU_ITEM_H = 28;
+const int MENU_ITEM_GAP = 31;
+const int MENU_ICON_PIXEL = 3;
 int selectedMenu = 0;
 
 // ---------------------------------------------------------------------
@@ -118,6 +125,18 @@ const char* ICON_HOLLOW[8] = {
 };
 uint16_t PALETTE_HOLLOW[4] = {HOLLOW_DARK, HOLLOW_WHITE, HOLLOW_RED, HOLLOW_DARK};
 
+const char* ICON_WIFI[8] = {
+    "........",
+    "..0000..",
+    ".0....0.",
+    "..0000..",
+    "...01...",
+    "..0...0.",
+    "...01...",
+    "....1...",
+};
+uint16_t PALETTE_WIFI[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
 void drawIcon(int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
     for (int r = 0; r < 8; r++) {
         for (int c = 0; c < 8; c++) {
@@ -174,15 +193,16 @@ void drawMenuScreen() {
         }
 
         switch (i) {
-            case 0: drawIcon(16, y, ICON_FOLDER, PALETTE_FOLDER); break;
-            case 1: drawIcon(16, y, ICON_FROG, PALETTE_FROG); break;
-            case 2: drawIcon(16, y, ICON_RASEN, PALETTE_RASEN); break;
-            case 3: drawIcon(16, y, ICON_GETSUGA, PALETTE_GETSUGA); break;
-            case 4: drawIcon(16, y, ICON_HOLLOW, PALETTE_HOLLOW); break;
+            case 0: drawIcon(16, y + 2, ICON_FOLDER, PALETTE_FOLDER, MENU_ICON_PIXEL); break;
+            case 1: drawIcon(16, y + 2, ICON_FROG, PALETTE_FROG, MENU_ICON_PIXEL); break;
+            case 2: drawIcon(16, y + 2, ICON_RASEN, PALETTE_RASEN, MENU_ICON_PIXEL); break;
+            case 3: drawIcon(16, y + 2, ICON_GETSUGA, PALETTE_GETSUGA, MENU_ICON_PIXEL); break;
+            case 4: drawIcon(16, y + 2, ICON_HOLLOW, PALETTE_HOLLOW, MENU_ICON_PIXEL); break;
+            case 5: drawIcon(16, y + 2, ICON_WIFI, PALETTE_WIFI, MENU_ICON_PIXEL); break;
         }
 
         M5.Lcd.setTextSize(2);
-        M5.Lcd.setCursor(56, y + 8);
+        M5.Lcd.setCursor(48, y + 6);
         M5.Lcd.print(MENU_ITEMS[i]);
     }
 
@@ -312,6 +332,34 @@ void drawHollowScreen() {
     M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
     hollowMask.draw(160, 115);
     drawFooter("", "BACK:B", "");
+}
+
+// ---------------------------------------------------------------------
+// WiFi captive portal screen
+// ---------------------------------------------------------------------
+
+void drawPortalScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("WiFi Portal");
+
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+    M5.Lcd.setTextSize(2);
+
+    M5.Lcd.setCursor(32, 56);
+    M5.Lcd.print("Network:");
+    M5.Lcd.setCursor(32, 80);
+    M5.Lcd.print(PORTAL_AP_NAME);
+
+    M5.Lcd.setCursor(32, 116);
+    M5.Lcd.print("Address:");
+    M5.Lcd.setCursor(32, 140);
+    M5.Lcd.print(portal.getIP().toString());
+
+    M5.Lcd.setCursor(32, 168);
+    M5.Lcd.printf("Logins captured: %d", portal.getCaptureCount());
+
+    drawFooter("", "STOP:B", "");
 }
 
 // ---------------------------------------------------------------------
@@ -446,6 +494,12 @@ void loop() {
                         state = STATE_HOLLOW;
                         drawHollowScreen();
                         break;
+                    case 5:
+                        portal.begin(PORTAL_AP_NAME);
+                        lastPortalCaptures = -1;
+                        state = STATE_PORTAL;
+                        drawPortalScreen();
+                        break;
                 }
             }
             break;
@@ -507,6 +561,21 @@ void loop() {
             M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
             hollowMask.draw(160, 115);
             delay(16);
+            break;
+
+        case STATE_PORTAL:
+            if (M5.BtnB.wasPressed()) {
+                portal.end();
+                refreshFileList();
+                state = STATE_MENU;
+                drawMenuScreen();
+                break;
+            }
+            portal.handle();
+            if (portal.getCaptureCount() != lastPortalCaptures) {
+                lastPortalCaptures = portal.getCaptureCount();
+                drawPortalScreen();
+            }
             break;
     }
 }

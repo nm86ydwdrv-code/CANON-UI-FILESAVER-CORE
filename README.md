@@ -2,17 +2,20 @@
 
 A light-blue, blocky/pixelated, menu-driven UI for the **M5Stack Core (Basic)**,
 with a sage-mode pixel-art toad companion named **Kawazu Kumite**, a pixelated
-Rasengan animation, and Bleach-themed Getsuga Tensho / Hollow Mask screens.
+Rasengan animation, Bleach-themed Getsuga Tensho / Hollow Mask screens, and a
+WiFi captive portal for testing your own devices/network.
 
 ## Features
 
-- Pixelated menu (Files / Pet / Rasengan / Getsuga Tensho / Hollow Mask), light-blue themed
+- Pixelated menu (Files / Pet / Rasengan / Getsuga Tensho / Hollow Mask / WiFi Portal), light-blue themed
 - File browser backed by the device's internal flash (SPIFFS) - **no SD card required**
 - Push files from your PC to the device over USB serial (no re-flashing needed)
 - Kawazu Kumite: an animated pixel-art sage-mode toad (idle bob, blinking, tongue flick)
 - Rasengan: an animated pixelated swirling chakra sphere
 - Getsuga Tensho: an animated pixelated black crescent of reiatsu with glowing edge and orbiting particles
 - Hollow Mask: a pixel-art Hollow mask with pulsing red markings
+- WiFi Portal: opens a WiFi access point with a light-blue themed login page, for
+  testing how your own devices respond to a captive portal
 
 ## Hardware
 
@@ -44,6 +47,18 @@ The `m5stack/M5Stack` library is pulled in automatically via `platformio.ini`.
 
 **Pet, Rasengan, Getsuga Tensho, and Hollow Mask screens**:
 - `B` — back to menu
+
+**WiFi Portal screen**:
+- Opens a WiFi access point named `CANON-Portal` and shows its SSID, IP
+  address, and a running count of submitted logins
+- Any device that connects to `CANON-Portal` and opens a browser is shown
+  a light-blue "WiFi login" page; submitted network/password values are
+  appended to `/portal_log.txt` on the device's flash, viewable from the
+  Files screen
+- `B` — stop the access point and return to menu
+
+> This is a generic test page intended for checking how your own devices
+> react to a captive portal. It does not mimic any real service.
 
 ## Uploading files from your PC
 
