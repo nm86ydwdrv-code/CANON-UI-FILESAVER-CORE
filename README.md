@@ -1,16 +1,18 @@
 # CANON
 
 A light-blue, blocky/pixelated, menu-driven UI for the **M5Stack Core (Basic)**,
-with a sage-mode pixel-art toad companion named **Kawazu Kumite** and a
-pixelated Rasengan animation.
+with a sage-mode pixel-art toad companion named **Kawazu Kumite**, a pixelated
+Rasengan animation, and Bleach-themed Getsuga Tensho / Hollow Mask screens.
 
 ## Features
 
-- Pixelated menu (Files / Pet / Rasengan), light-blue themed
+- Pixelated menu (Files / Pet / Rasengan / Getsuga Tensho / Hollow Mask), light-blue themed
 - File browser backed by the device's internal flash (SPIFFS) - **no SD card required**
 - Push files from your PC to the device over USB serial (no re-flashing needed)
 - Kawazu Kumite: an animated pixel-art sage-mode toad (idle bob, blinking, tongue flick)
 - Rasengan: an animated pixelated swirling chakra sphere
+- Getsuga Tensho: an animated pixelated black crescent of reiatsu with glowing edge and orbiting particles
+- Hollow Mask: a pixel-art Hollow mask with pulsing red markings
 
 ## Hardware
 
@@ -40,7 +42,7 @@ The `m5stack/M5Stack` library is pulled in automatically via `platformio.ini`.
 - `A` / `C` — scroll the file list
 - `B` — back to menu
 
-**Pet screen** and **Rasengan screen**:
+**Pet, Rasengan, Getsuga Tensho, and Hollow Mask screens**:
 - `B` — back to menu
 
 ## Uploading files from your PC
@@ -70,3 +72,5 @@ Colors are defined in `firmware/include/theme.h`:
 - `THEME_PANEL` / `THEME_SELECT` — list rows and selection highlight
 - `FROG_*` — sage-mode orange palette for Kawazu Kumite
 - `RASEN_*` — blue palette for the Rasengan animation
+- `GETSUGA_*` — dark/cyan palette for the Getsuga Tensho animation
+- `HOLLOW_*` — white/red/black palette for the Hollow Mask

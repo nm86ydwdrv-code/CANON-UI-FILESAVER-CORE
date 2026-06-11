@@ -3,23 +3,34 @@
 #include "theme.h"
 #include "frog.h"
 #include "rasengan.h"
+#include "bleach.h"
 
 // ---------------------------------------------------------------------
 // CANON - M5Stack Core firmware
 //   - Light-blue, blocky/pixelated menu-driven UI
 //   - Files live on the device's internal flash (SPIFFS) - no SD card
 //   - Files are pushed from a PC over USB serial (see uploader/upload.py)
-//   - Kawazu Kumite (sage toad pet) and a pixel Rasengan animation
+//   - Kawazu Kumite (sage toad pet), pixel Rasengan, and Bleach-themed
+//     Getsuga Tensho / Hollow Mask screens
 // ---------------------------------------------------------------------
 
 #define MAGIC_LEN 4
 const char MAGIC[MAGIC_LEN] = {'K', 'K', 'U', '1'};
 
-enum AppState { STATE_MENU, STATE_FILES, STATE_PET, STATE_RASENGAN };
+enum AppState {
+    STATE_MENU,
+    STATE_FILES,
+    STATE_PET,
+    STATE_RASENGAN,
+    STATE_GETSUGA,
+    STATE_HOLLOW
+};
 AppState state = STATE_MENU;
 
 Frog frog;
 Rasengan rasengan;
+GetsugaTensho getsuga;
+HollowMask hollowMask;
 
 // File list state
 String fileNames[64];
@@ -31,8 +42,16 @@ const int ROW_HEIGHT = 24;
 const int LIST_TOP = 30;
 
 // Menu state
-const char* MENU_ITEMS[] = {"Files", "Pet: Kawazu Kumite", "Rasengan"};
-const int MENU_COUNT = 3;
+const char* MENU_ITEMS[] = {
+    "Files",
+    "Pet: Kawazu Kumite",
+    "Rasengan",
+    "Getsuga Tensho",
+    "Hollow Mask",
+};
+const int MENU_COUNT = 5;
+const int MENU_ITEM_H = 32;
+const int MENU_ITEM_GAP = 36;
 int selectedMenu = 0;
 
 // ---------------------------------------------------------------------
@@ -74,6 +93,30 @@ const char* ICON_RASEN[8] = {
     "........",
 };
 uint16_t PALETTE_RASEN[4] = {RASEN_OUTER, RASEN_MID, RASEN_CORE, 0};
+
+const char* ICON_GETSUGA[8] = {
+    "........",
+    ".000....",
+    "01110...",
+    "011110..",
+    "0111110.",
+    "011110..",
+    "01110...",
+    ".000....",
+};
+uint16_t PALETTE_GETSUGA[4] = {GETSUGA_GLOW, GETSUGA_DARK, 0, 0};
+
+const char* ICON_HOLLOW[8] = {
+    "........",
+    ".0000...",
+    "0111110.",
+    "0121210.",
+    "0111110.",
+    "0133310.",
+    "0111110.",
+    ".0000...",
+};
+uint16_t PALETTE_HOLLOW[4] = {HOLLOW_DARK, HOLLOW_WHITE, HOLLOW_RED, HOLLOW_DARK};
 
 void drawIcon(int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
     for (int r = 0; r < 8; r++) {
@@ -119,23 +162,27 @@ void drawMenuScreen() {
     drawHeader("CANON");
 
     for (int i = 0; i < MENU_COUNT; i++) {
-        int y = LIST_TOP + i * 40;
+        int y = LIST_TOP + i * MENU_ITEM_GAP;
         bool selected = (i == selectedMenu);
 
         if (selected) {
-            M5.Lcd.fillRect(8, y, 304, 36, THEME_SELECT);
+            M5.Lcd.fillRect(8, y, 304, MENU_ITEM_H, THEME_SELECT);
             M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
         } else {
-            M5.Lcd.fillRect(8, y, 304, 36, THEME_PANEL);
+            M5.Lcd.fillRect(8, y, 304, MENU_ITEM_H, THEME_PANEL);
             M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
         }
 
-        if (i == 0) drawIcon(16, y + 2, ICON_FOLDER, PALETTE_FOLDER);
-        if (i == 1) drawIcon(16, y + 2, ICON_FROG, PALETTE_FROG);
-        if (i == 2) drawIcon(16, y + 2, ICON_RASEN, PALETTE_RASEN);
+        switch (i) {
+            case 0: drawIcon(16, y, ICON_FOLDER, PALETTE_FOLDER); break;
+            case 1: drawIcon(16, y, ICON_FROG, PALETTE_FROG); break;
+            case 2: drawIcon(16, y, ICON_RASEN, PALETTE_RASEN); break;
+            case 3: drawIcon(16, y, ICON_GETSUGA, PALETTE_GETSUGA); break;
+            case 4: drawIcon(16, y, ICON_HOLLOW, PALETTE_HOLLOW); break;
+        }
 
         M5.Lcd.setTextSize(2);
-        M5.Lcd.setCursor(56, y + 10);
+        M5.Lcd.setCursor(56, y + 8);
         M5.Lcd.print(MENU_ITEMS[i]);
     }
 
@@ -240,6 +287,30 @@ void drawRasenganScreen() {
     drawHeader("Rasengan");
     M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
     rasengan.draw(160, 115, 60);
+    drawFooter("", "BACK:B", "");
+}
+
+// ---------------------------------------------------------------------
+// Getsuga Tensho screen (Bleach)
+// ---------------------------------------------------------------------
+
+void drawGetsugaScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("Getsuga Tensho");
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    getsuga.draw(160, 115, 55);
+    drawFooter("", "BACK:B", "");
+}
+
+// ---------------------------------------------------------------------
+// Hollow Mask screen (Bleach)
+// ---------------------------------------------------------------------
+
+void drawHollowScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("Hollow Mask");
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    hollowMask.draw(160, 115);
     drawFooter("", "BACK:B", "");
 }
 
@@ -353,16 +424,28 @@ void loop() {
                 drawMenuScreen();
             }
             if (M5.BtnB.wasPressed()) {
-                if (selectedMenu == 0) {
-                    refreshFileList();
-                    state = STATE_FILES;
-                    drawFileScreen();
-                } else if (selectedMenu == 1) {
-                    state = STATE_PET;
-                    drawPetScreen();
-                } else {
-                    state = STATE_RASENGAN;
-                    drawRasenganScreen();
+                switch (selectedMenu) {
+                    case 0:
+                        refreshFileList();
+                        state = STATE_FILES;
+                        drawFileScreen();
+                        break;
+                    case 1:
+                        state = STATE_PET;
+                        drawPetScreen();
+                        break;
+                    case 2:
+                        state = STATE_RASENGAN;
+                        drawRasenganScreen();
+                        break;
+                    case 3:
+                        state = STATE_GETSUGA;
+                        drawGetsugaScreen();
+                        break;
+                    case 4:
+                        state = STATE_HOLLOW;
+                        drawHollowScreen();
+                        break;
                 }
             }
             break;
@@ -401,6 +484,28 @@ void loop() {
             rasengan.update();
             M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
             rasengan.draw(160, 115, 60);
+            delay(16);
+            break;
+
+        case STATE_GETSUGA:
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            getsuga.update();
+            M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
+            getsuga.draw(160, 115, 55);
+            delay(16);
+            break;
+
+        case STATE_HOLLOW:
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            hollowMask.update();
+            M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
+            hollowMask.draw(160, 115);
             delay(16);
             break;
     }

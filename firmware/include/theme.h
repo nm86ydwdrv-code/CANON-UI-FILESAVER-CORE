@@ -22,3 +22,12 @@
 #define RASEN_CORE     0xFFFF  // white-hot core
 #define RASEN_MID      0x6FFF  // bright cyan-blue
 #define RASEN_OUTER    0x34DF  // deep blue swirl
+
+// Getsuga Tensho palette (Bleach - Ichigo's black crescent energy wave)
+#define GETSUGA_DARK   0x10A2  // near-black blue-violet body
+#define GETSUGA_GLOW   0x9FFF  // pale cyan reiatsu glow
+
+// Hollow mask palette (Bleach)
+#define HOLLOW_WHITE   0xFFFF  // mask white
+#define HOLLOW_RED     0xF800  // mask red markings
+#define HOLLOW_DARK    0x0000  // outline / eye sockets / teeth gaps
