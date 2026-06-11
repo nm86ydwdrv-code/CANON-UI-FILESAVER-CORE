@@ -62,8 +62,10 @@ public:
         M5.Lcd.fillCircle(cx - 20, by + 26, 7, FROG_BODY);
         M5.Lcd.fillCircle(cx + 20, by + 26, 7, FROG_BODY);
 
-        // Mouth
-        M5.Lcd.drawArc(cx, by + 6, 14, 12, 30, 150, THEME_TEXT, FROG_BODY);
+        // Mouth (simple smiling line)
+        M5.Lcd.drawFastHLine(cx - 12, by + 8, 24, THEME_TEXT);
+        M5.Lcd.drawPixel(cx - 13, by + 7, THEME_TEXT);
+        M5.Lcd.drawPixel(cx + 13, by + 7, THEME_TEXT);
 
         // Tongue flick
         if (tongueOut) {
