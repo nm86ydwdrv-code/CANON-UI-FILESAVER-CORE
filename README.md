@@ -7,7 +7,7 @@ WiFi captive portal for testing your own devices/network.
 
 ## Features
 
-- Pixelated menu (Files / Pet / Rasengan / Getsuga Tensho / Hollow Mask / WiFi Portal), light-blue themed
+- Pixelated, scrollable menu (10 sections), light-blue themed
 - File browser backed by the device's internal flash (SPIFFS) - **no SD card required**
 - Push files from your PC to the device over USB serial (no re-flashing needed)
 - Kawazu Kumite: an animated pixel-art sage-mode toad (idle bob, blinking, tongue flick)
@@ -16,6 +16,10 @@ WiFi captive portal for testing your own devices/network.
 - Hollow Mask: a pixel-art Hollow mask with pulsing red markings
 - WiFi Portal: opens a WiFi access point with a light-blue themed login page, for
   testing how your own devices respond to a captive portal
+- WiFi Scanner: lists nearby WiFi networks with signal strength and security status
+- BLE Scanner: lists nearby Bluetooth Low Energy devices with name, address, and RSSI
+- IR Remote: sends common NEC-protocol TV power codes via the IR LED on GPIO 12
+- I2C Scanner: scans the Grove port (pins 21/22) for connected I2C devices
 
 ## Hardware
 
@@ -59,6 +63,25 @@ The `m5stack/M5Stack` library is pulled in automatically via `platformio.ini`.
 
 > This is a generic test page intended for checking how your own devices
 > react to a captive portal. It does not mimic any real service.
+
+**WiFi Scanner screen**:
+- Lists nearby networks (SSID, security `*` flag, and RSSI in dBm)
+- `A` / `C` — scroll, `B` — back to menu (re-scans each time you open it)
+
+**BLE Scanner screen**:
+- Lists nearby BLE devices (name, MAC address, RSSI), 3-second scan
+- `A` / `C` — scroll, `B` — back to menu
+
+**IR Remote screen**:
+- Select a TV power code and press `B` to transmit it via the IR LED on GPIO 12
+- `A` / `C` — move selection, `B` on "<- Back to Menu" returns to the menu
+- Codes are commonly published NEC power-toggle codes (Samsung, LG, Vizio,
+  generic) - coverage depends on your TV's remote protocol
+
+**I2C Scanner screen**:
+- Scans the Grove port (SDA=21, SCL=22) for connected I2C devices and lists
+  their addresses
+- `A` — back to menu, `B` — rescan
 
 ## Uploading files from your PC
 

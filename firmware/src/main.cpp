@@ -1,5 +1,8 @@
 #include <M5Stack.h>
 #include <SPIFFS.h>
+#include <WiFi.h>
+#include <Wire.h>
+#include <NimBLEDevice.h>
 #include "theme.h"
 #include "frog.h"
 #include "rasengan.h"
@@ -25,7 +28,11 @@ enum AppState {
     STATE_RASENGAN,
     STATE_GETSUGA,
     STATE_HOLLOW,
-    STATE_PORTAL
+    STATE_PORTAL,
+    STATE_WIFI_SCAN,
+    STATE_BLE_SCAN,
+    STATE_IR,
+    STATE_I2C
 };
 AppState state = STATE_MENU;
 
@@ -54,11 +61,17 @@ const char* MENU_ITEMS[] = {
     "Getsuga Tensho",
     "Hollow Mask",
     "WiFi Portal",
+    "WiFi Scanner",
+    "BLE Scanner",
+    "IR Remote",
+    "I2C Scanner",
 };
-const int MENU_COUNT = 6;
-const int MENU_ITEM_H = 28;
-const int MENU_ITEM_GAP = 31;
+const int MENU_COUNT = 10;
+const int MENU_ITEM_H = 34;
+const int MENU_ITEM_GAP = 37;
 const int MENU_ICON_PIXEL = 3;
+const int MENU_VISIBLE = 5;
+int menuScroll = 0;
 int selectedMenu = 0;
 
 // ---------------------------------------------------------------------
@@ -137,6 +150,44 @@ const char* ICON_WIFI[8] = {
 };
 uint16_t PALETTE_WIFI[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
 
+uint16_t PALETTE_WIFI_SCAN[4] = {THEME_TEXT, THEME_ACCENT, 0, 0};
+
+const char* ICON_BLE[8] = {
+    "........",
+    "...0....",
+    "..00....",
+    ".0.0.0..",
+    "..000...",
+    ".0.0.0..",
+    "..00....",
+    "...0....",
+};
+uint16_t PALETTE_BLE[4] = {THEME_ACCENT, 0, 0, 0};
+
+const char* ICON_IR[8] = {
+    "....1.1.",
+    "...1...1",
+    "..000...",
+    ".00000..",
+    ".00000..",
+    ".00000..",
+    ".00000..",
+    "........",
+};
+uint16_t PALETTE_IR[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
+const char* ICON_I2C[8] = {
+    ".1.11.1.",
+    ".000000.",
+    "10000001",
+    "10000001",
+    "10000001",
+    "10000001",
+    ".000000.",
+    ".1.11.1.",
+};
+uint16_t PALETTE_I2C[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
 void drawIcon(int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
     for (int r = 0; r < 8; r++) {
         for (int c = 0; c < 8; c++) {
@@ -176,12 +227,33 @@ void drawFooter(const char* a, const char* b, const char* c) {
 // Menu screen
 // ---------------------------------------------------------------------
 
+void drawMenuIcon(int i, int x, int y) {
+    switch (i) {
+        case 0: drawIcon(x, y, ICON_FOLDER, PALETTE_FOLDER, MENU_ICON_PIXEL); break;
+        case 1: drawIcon(x, y, ICON_FROG, PALETTE_FROG, MENU_ICON_PIXEL); break;
+        case 2: drawIcon(x, y, ICON_RASEN, PALETTE_RASEN, MENU_ICON_PIXEL); break;
+        case 3: drawIcon(x, y, ICON_GETSUGA, PALETTE_GETSUGA, MENU_ICON_PIXEL); break;
+        case 4: drawIcon(x, y, ICON_HOLLOW, PALETTE_HOLLOW, MENU_ICON_PIXEL); break;
+        case 5: drawIcon(x, y, ICON_WIFI, PALETTE_WIFI, MENU_ICON_PIXEL); break;
+        case 6: drawIcon(x, y, ICON_WIFI, PALETTE_WIFI_SCAN, MENU_ICON_PIXEL); break;
+        case 7: drawIcon(x, y, ICON_BLE, PALETTE_BLE, MENU_ICON_PIXEL); break;
+        case 8: drawIcon(x, y, ICON_IR, PALETTE_IR, MENU_ICON_PIXEL); break;
+        case 9: drawIcon(x, y, ICON_I2C, PALETTE_I2C, MENU_ICON_PIXEL); break;
+    }
+}
+
 void drawMenuScreen() {
     M5.Lcd.fillScreen(THEME_BG);
     drawHeader("CANON");
 
-    for (int i = 0; i < MENU_COUNT; i++) {
-        int y = LIST_TOP + i * MENU_ITEM_GAP;
+    if (selectedMenu < menuScroll) menuScroll = selectedMenu;
+    if (selectedMenu >= menuScroll + MENU_VISIBLE) menuScroll = selectedMenu - MENU_VISIBLE + 1;
+
+    for (int row = 0; row < MENU_VISIBLE; row++) {
+        int i = menuScroll + row;
+        if (i >= MENU_COUNT) break;
+
+        int y = LIST_TOP + row * MENU_ITEM_GAP;
         bool selected = (i == selectedMenu);
 
         if (selected) {
@@ -192,17 +264,10 @@ void drawMenuScreen() {
             M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
         }
 
-        switch (i) {
-            case 0: drawIcon(16, y + 2, ICON_FOLDER, PALETTE_FOLDER, MENU_ICON_PIXEL); break;
-            case 1: drawIcon(16, y + 2, ICON_FROG, PALETTE_FROG, MENU_ICON_PIXEL); break;
-            case 2: drawIcon(16, y + 2, ICON_RASEN, PALETTE_RASEN, MENU_ICON_PIXEL); break;
-            case 3: drawIcon(16, y + 2, ICON_GETSUGA, PALETTE_GETSUGA, MENU_ICON_PIXEL); break;
-            case 4: drawIcon(16, y + 2, ICON_HOLLOW, PALETTE_HOLLOW, MENU_ICON_PIXEL); break;
-            case 5: drawIcon(16, y + 2, ICON_WIFI, PALETTE_WIFI, MENU_ICON_PIXEL); break;
-        }
+        drawMenuIcon(i, 16, y + 5);
 
         M5.Lcd.setTextSize(2);
-        M5.Lcd.setCursor(48, y + 6);
+        M5.Lcd.setCursor(48, y + 9);
         M5.Lcd.print(MENU_ITEMS[i]);
     }
 
@@ -363,6 +428,298 @@ void drawPortalScreen() {
 }
 
 // ---------------------------------------------------------------------
+// WiFi scanner
+// ---------------------------------------------------------------------
+
+const int WIFI_SCAN_MAX = 20;
+String wifiSSID[WIFI_SCAN_MAX];
+int32_t wifiRSSI[WIFI_SCAN_MAX];
+bool wifiSecure[WIFI_SCAN_MAX];
+int wifiCount = 0;
+int wifiSelected = 0;
+int wifiScroll = 0;
+
+void scanWifiNetworks() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("WiFi Scanner");
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(20, 100);
+    M5.Lcd.print("Scanning...");
+    drawFooter("", "", "");
+
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+
+    int n = WiFi.scanNetworks();
+    wifiCount = 0;
+    for (int i = 0; i < n && wifiCount < WIFI_SCAN_MAX; i++) {
+        String ssid = WiFi.SSID(i);
+        if (ssid.length() == 0) ssid = "(hidden)";
+        wifiSSID[wifiCount] = ssid;
+        wifiRSSI[wifiCount] = WiFi.RSSI(i);
+        wifiSecure[wifiCount] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+        wifiCount++;
+    }
+    WiFi.scanDelete();
+    WiFi.mode(WIFI_OFF);
+
+    wifiSelected = 0;
+    wifiScroll = 0;
+}
+
+void drawWifiScanScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("WiFi Scanner");
+
+    if (wifiCount == 0) {
+        M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setCursor(20, 100);
+        M5.Lcd.print("No networks found.");
+    } else {
+        if (wifiSelected < wifiScroll) wifiScroll = wifiSelected;
+        if (wifiSelected >= wifiScroll + VISIBLE_ROWS) wifiScroll = wifiSelected - VISIBLE_ROWS + 1;
+
+        for (int i = 0; i < VISIBLE_ROWS; i++) {
+            int idx = wifiScroll + i;
+            if (idx >= wifiCount) break;
+
+            int y = LIST_TOP + i * ROW_HEIGHT;
+            bool selected = (idx == wifiSelected);
+
+            if (selected) {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_SELECT);
+                M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
+            } else {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_PANEL);
+                M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+            }
+
+            M5.Lcd.setTextSize(2);
+            M5.Lcd.setCursor(16, y + 3);
+            String name = wifiSSID[idx];
+            if (name.length() > 16) name = name.substring(0, 13) + "...";
+            M5.Lcd.printf("%s%-17s%4ddBm", wifiSecure[idx] ? "*" : " ", name.c_str(), wifiRSSI[idx]);
+        }
+    }
+
+    drawFooter("UP:A", "BACK:B", "DOWN:C");
+}
+
+// ---------------------------------------------------------------------
+// BLE scanner
+// ---------------------------------------------------------------------
+
+const int BLE_SCAN_MAX = 12;
+String bleName[BLE_SCAN_MAX];
+String bleAddr[BLE_SCAN_MAX];
+int bleRSSI[BLE_SCAN_MAX];
+int bleCount = 0;
+int bleSelected = 0;
+int bleScroll = 0;
+bool bleInited = false;
+
+void scanBleDevices() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("BLE Scanner");
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(20, 100);
+    M5.Lcd.print("Scanning...");
+    drawFooter("", "", "");
+
+    if (!bleInited) {
+        NimBLEDevice::init("");
+        bleInited = true;
+    }
+
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    scan->setActiveScan(true);
+    scan->start(3, false);
+    NimBLEScanResults results = scan->getResults();
+
+    bleCount = 0;
+    int found = results.getCount();
+    for (int i = 0; i < found && bleCount < BLE_SCAN_MAX; i++) {
+        NimBLEAdvertisedDevice dev = results.getDevice(i);
+        bleAddr[bleCount] = dev.getAddress().toString().c_str();
+        bleName[bleCount] = dev.haveName() ? dev.getName().c_str() : "(no name)";
+        bleRSSI[bleCount] = dev.getRSSI();
+        bleCount++;
+    }
+    scan->clearResults();
+
+    bleSelected = 0;
+    bleScroll = 0;
+}
+
+void drawBleScanScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("BLE Scanner");
+
+    if (bleCount == 0) {
+        M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setCursor(20, 100);
+        M5.Lcd.print("No BLE devices found.");
+    } else {
+        if (bleSelected < bleScroll) bleScroll = bleSelected;
+        if (bleSelected >= bleScroll + VISIBLE_ROWS) bleScroll = bleSelected - VISIBLE_ROWS + 1;
+
+        for (int i = 0; i < VISIBLE_ROWS; i++) {
+            int idx = bleScroll + i;
+            if (idx >= bleCount) break;
+
+            int y = LIST_TOP + i * ROW_HEIGHT;
+            bool selected = (idx == bleSelected);
+
+            if (selected) {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_SELECT);
+                M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
+            } else {
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_PANEL);
+                M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+            }
+
+            M5.Lcd.setTextSize(1);
+            M5.Lcd.setCursor(16, y + 3);
+            String name = bleName[idx];
+            if (name.length() > 18) name = name.substring(0, 15) + "...";
+            M5.Lcd.printf("%-18s %s", name.c_str(), bleAddr[idx].c_str());
+            M5.Lcd.setCursor(16, y + 13);
+            M5.Lcd.printf("RSSI: %d dBm", bleRSSI[idx]);
+        }
+    }
+
+    drawFooter("UP:A", "BACK:B", "DOWN:C");
+}
+
+// ---------------------------------------------------------------------
+// IR remote (NEC protocol, bit-banged carrier on IR_PIN)
+// ---------------------------------------------------------------------
+
+#define IR_PIN 12
+
+struct IrCode {
+    const char* name;
+    uint32_t code;
+};
+
+const IrCode IR_CODES[] = {
+    {"Samsung TV Power", 0xE0E040BF},
+    {"LG TV Power",      0x20DF10EF},
+    {"Vizio TV Power",   0x20DF23DC},
+    {"Generic NEC Power", 0x00FF629D},
+    {"<- Back to Menu",  0},
+};
+const int IR_CODE_COUNT = sizeof(IR_CODES) / sizeof(IR_CODES[0]);
+const int IR_BACK_INDEX = IR_CODE_COUNT - 1;
+int irSelected = 0;
+unsigned long irSentAt = 0;
+
+void irMark(uint32_t durationUs) {
+    unsigned long endTime = micros() + durationUs;
+    while (micros() < endTime) {
+        digitalWrite(IR_PIN, HIGH);
+        delayMicroseconds(13);
+        digitalWrite(IR_PIN, LOW);
+        delayMicroseconds(11);
+    }
+}
+
+void irSpace(uint32_t durationUs) {
+    digitalWrite(IR_PIN, LOW);
+    delayMicroseconds(durationUs);
+}
+
+void irSendNEC(uint32_t code) {
+    pinMode(IR_PIN, OUTPUT);
+    irMark(9000);
+    irSpace(4500);
+    for (int i = 31; i >= 0; i--) {
+        irMark(560);
+        irSpace((code & (1UL << i)) ? 1690 : 560);
+    }
+    irMark(560);
+    digitalWrite(IR_PIN, LOW);
+}
+
+void drawIrScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("IR Remote");
+
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(32, 50);
+    M5.Lcd.print("Send IR power code:");
+
+    for (int i = 0; i < IR_CODE_COUNT; i++) {
+        int y = 80 + i * 24;
+        bool selected = (i == irSelected);
+        M5.Lcd.setTextColor(selected ? THEME_SELTEXT : THEME_TEXT, selected ? THEME_SELECT : THEME_PANEL);
+        if (selected) M5.Lcd.fillRect(28, y - 2, 264, 22, THEME_SELECT);
+        else M5.Lcd.fillRect(28, y - 2, 264, 22, THEME_PANEL);
+        M5.Lcd.setCursor(36, y);
+        M5.Lcd.print(IR_CODES[i].name);
+    }
+
+    if (millis() - irSentAt < 800) {
+        M5.Lcd.setTextColor(THEME_ACCENT, THEME_PANEL);
+        M5.Lcd.setCursor(32, 175);
+        M5.Lcd.print("Sent!");
+    }
+
+    drawFooter("UP:A", "SELECT:B", "DOWN:C");
+}
+
+// ---------------------------------------------------------------------
+// I2C / Grove bus scanner
+// ---------------------------------------------------------------------
+
+const int I2C_SCAN_MAX = 16;
+uint8_t i2cAddrs[I2C_SCAN_MAX];
+int i2cCount = 0;
+
+void scanI2C() {
+    Wire.begin();
+    i2cCount = 0;
+    for (uint8_t addr = 1; addr < 127 && i2cCount < I2C_SCAN_MAX; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            i2cAddrs[i2cCount++] = addr;
+        }
+    }
+}
+
+void drawI2CScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("I2C Scanner");
+
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+    M5.Lcd.setTextSize(2);
+
+    if (i2cCount == 0) {
+        M5.Lcd.setCursor(32, 56);
+        M5.Lcd.print("No I2C devices found");
+        M5.Lcd.setCursor(32, 80);
+        M5.Lcd.print("on Grove port (21/22).");
+    } else {
+        M5.Lcd.setCursor(32, 50);
+        M5.Lcd.printf("%d device(s) found:", i2cCount);
+        for (int i = 0; i < i2cCount && i < 6; i++) {
+            M5.Lcd.setCursor(32, 76 + i * 18);
+            M5.Lcd.printf("0x%02X", i2cAddrs[i]);
+        }
+    }
+
+    drawFooter("BACK:A", "RESCAN:B", "");
+}
+
+// ---------------------------------------------------------------------
 // Serial upload protocol
 //   MAGIC(4) + nameLen(1) + name(nameLen) + fileSize(4, LE) + data(fileSize)
 //   Device replies "OK\n" or "ERR\n"
@@ -500,6 +857,27 @@ void loop() {
                         state = STATE_PORTAL;
                         drawPortalScreen();
                         break;
+                    case 6:
+                        scanWifiNetworks();
+                        state = STATE_WIFI_SCAN;
+                        drawWifiScanScreen();
+                        break;
+                    case 7:
+                        scanBleDevices();
+                        state = STATE_BLE_SCAN;
+                        drawBleScanScreen();
+                        break;
+                    case 8:
+                        irSelected = 0;
+                        irSentAt = 0;
+                        state = STATE_IR;
+                        drawIrScreen();
+                        break;
+                    case 9:
+                        scanI2C();
+                        state = STATE_I2C;
+                        drawI2CScreen();
+                        break;
                 }
             }
             break;
@@ -561,6 +939,71 @@ void loop() {
             M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
             hollowMask.draw(160, 115);
             delay(16);
+            break;
+
+        case STATE_WIFI_SCAN:
+            if (M5.BtnA.wasPressed()) {
+                if (wifiSelected > 0) wifiSelected--;
+                drawWifiScanScreen();
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (wifiSelected < wifiCount - 1) wifiSelected++;
+                drawWifiScanScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            break;
+
+        case STATE_BLE_SCAN:
+            if (M5.BtnA.wasPressed()) {
+                if (bleSelected > 0) bleSelected--;
+                drawBleScanScreen();
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (bleSelected < bleCount - 1) bleSelected++;
+                drawBleScanScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            break;
+
+        case STATE_IR:
+            if (M5.BtnA.wasPressed()) {
+                if (irSelected > 0) irSelected--;
+                drawIrScreen();
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (irSelected < IR_CODE_COUNT - 1) irSelected++;
+                drawIrScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                if (irSelected == IR_BACK_INDEX) {
+                    state = STATE_MENU;
+                    drawMenuScreen();
+                } else {
+                    irSendNEC(IR_CODES[irSelected].code);
+                    irSentAt = millis();
+                    drawIrScreen();
+                }
+            }
+            if (millis() - irSentAt > 800 && millis() - irSentAt < 850) {
+                drawIrScreen();
+            }
+            break;
+
+        case STATE_I2C:
+            if (M5.BtnA.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                scanI2C();
+                drawI2CScreen();
+            }
             break;
 
         case STATE_PORTAL:
