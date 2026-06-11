@@ -7,6 +7,8 @@ WiFi captive portal for testing your own devices/network.
 
 ## Features
 
+- Bruce-firmware-style UI: every screen transition slides in from the
+  right, with in-place updates (selection/scroll/rescans) redrawing instantly
 - Pixelated, scrollable menu (10 sections), light-blue themed
 - File browser backed by the device's internal flash (SPIFFS) - **no SD card required**
 - Push files from your PC to the device over USB serial (no re-flashing needed)
