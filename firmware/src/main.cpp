@@ -1,52 +1,106 @@
 #include <M5Stack.h>
-#include <SD.h>
+#include <SPIFFS.h>
 #include "theme.h"
 #include "frog.h"
+#include "rasengan.h"
 
 // ---------------------------------------------------------------------
 // CANON - M5Stack Core firmware
-//   - Light-blue, Flipper-Zero-style file browser for the SD card
+//   - Light-blue, blocky/pixelated menu-driven UI
+//   - Files live on the device's internal flash (SPIFFS) - no SD card
 //   - Files are pushed from a PC over USB serial (see uploader/upload.py)
-//   - A small sage-mode frog companion, Kawazu Kumite, lives on its own screen
+//   - Kawazu Kumite (sage toad pet) and a pixel Rasengan animation
 // ---------------------------------------------------------------------
 
-#define UPLOAD_DIR "/uploads"
 #define MAGIC_LEN 4
 const char MAGIC[MAGIC_LEN] = {'K', 'K', 'U', '1'};
 
-enum AppState { STATE_FILES, STATE_PET };
-AppState state = STATE_FILES;
+enum AppState { STATE_MENU, STATE_FILES, STATE_PET, STATE_RASENGAN };
+AppState state = STATE_MENU;
 
 Frog frog;
+Rasengan rasengan;
 
 // File list state
 String fileNames[64];
 int fileCount = 0;
-int selectedIndex = 0;
+int selectedFile = 0;
 int scrollOffset = 0;
-const int VISIBLE_ROWS = 7;
+const int VISIBLE_ROWS = 6;
 const int ROW_HEIGHT = 24;
 const int LIST_TOP = 30;
 
-bool sdReady = false;
+// Menu state
+const char* MENU_ITEMS[] = {"Files", "Pet: Kawazu Kumite", "Rasengan"};
+const int MENU_COUNT = 3;
+int selectedMenu = 0;
 
 // ---------------------------------------------------------------------
-// UI drawing
+// Pixel icons (8x8 grids, '.' = transparent, digits index into a palette)
+// ---------------------------------------------------------------------
+
+const char* ICON_FOLDER[8] = {
+    "........",
+    "..0000..",
+    ".0111110",
+    ".0111111",
+    ".0111111",
+    ".0111111",
+    ".0000000",
+    "........",
+};
+uint16_t PALETTE_FOLDER[4] = {THEME_ACCENT, THEME_PANEL, 0, 0};
+
+const char* ICON_FROG[8] = {
+    "........",
+    "..0000..",
+    ".0111110",
+    ".0232320",
+    ".0111110",
+    ".0111110",
+    ".0000000",
+    "........",
+};
+uint16_t PALETTE_FROG[4] = {FROG_DARK, FROG_BODY, FROG_EYE, FROG_PUPIL};
+
+const char* ICON_RASEN[8] = {
+    "........",
+    "..0000..",
+    ".011110.",
+    ".012210.",
+    ".012210.",
+    ".011110.",
+    "..0000..",
+    "........",
+};
+uint16_t PALETTE_RASEN[4] = {RASEN_OUTER, RASEN_MID, RASEN_CORE, 0};
+
+void drawIcon(int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
+    for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            char ch = rows[r][c];
+            if (ch == '.') continue;
+            uint16_t color = palette[ch - '0'];
+            M5.Lcd.fillRect(x + c * pixel, y + r * pixel, pixel, pixel, color);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// UI chrome
 // ---------------------------------------------------------------------
 
 void drawHeader(const char* title) {
-    M5.Lcd.fillRect(0, 0, 320, 24, THEME_BG);
-    M5.Lcd.drawFastHLine(0, 23, 320, THEME_ACCENT);
-    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+    M5.Lcd.fillRect(0, 0, 320, 24, THEME_ACCENT);
+    M5.Lcd.setTextColor(THEME_SELTEXT, THEME_ACCENT);
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(8, 4);
     M5.Lcd.print(title);
 }
 
 void drawFooter(const char* a, const char* b, const char* c) {
-    M5.Lcd.fillRect(0, 216, 320, 24, THEME_BG);
-    M5.Lcd.drawFastHLine(0, 216, 320, THEME_ACCENT);
-    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+    M5.Lcd.fillRect(0, 216, 320, 24, THEME_ACCENT);
+    M5.Lcd.setTextColor(THEME_SELTEXT, THEME_ACCENT);
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(8, 220);
     M5.Lcd.print(a);
@@ -56,63 +110,93 @@ void drawFooter(const char* a, const char* b, const char* c) {
     M5.Lcd.print(c);
 }
 
+// ---------------------------------------------------------------------
+// Menu screen
+// ---------------------------------------------------------------------
+
+void drawMenuScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("CANON");
+
+    for (int i = 0; i < MENU_COUNT; i++) {
+        int y = LIST_TOP + i * 40;
+        bool selected = (i == selectedMenu);
+
+        if (selected) {
+            M5.Lcd.fillRect(8, y, 304, 36, THEME_SELECT);
+            M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
+        } else {
+            M5.Lcd.fillRect(8, y, 304, 36, THEME_PANEL);
+            M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
+        }
+
+        if (i == 0) drawIcon(16, y + 2, ICON_FOLDER, PALETTE_FOLDER);
+        if (i == 1) drawIcon(16, y + 2, ICON_FROG, PALETTE_FROG);
+        if (i == 2) drawIcon(16, y + 2, ICON_RASEN, PALETTE_RASEN);
+
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setCursor(56, y + 10);
+        M5.Lcd.print(MENU_ITEMS[i]);
+    }
+
+    drawFooter("UP:A", "OPEN:B", "DOWN:C");
+}
+
+// ---------------------------------------------------------------------
+// File browser (SPIFFS - internal flash, no SD card)
+// ---------------------------------------------------------------------
+
 void refreshFileList() {
     fileCount = 0;
-    if (!sdReady) return;
 
-    File dir = SD.open(UPLOAD_DIR);
+    File dir = SPIFFS.open("/");
     if (!dir) return;
 
     File entry = dir.openNextFile();
     while (entry && fileCount < 64) {
         if (!entry.isDirectory()) {
-            fileNames[fileCount++] = String(entry.name());
+            String name = String(entry.name());
+            if (name.startsWith("/")) name = name.substring(1);
+            fileNames[fileCount++] = name;
         }
         entry.close();
         entry = dir.openNextFile();
     }
     dir.close();
 
-    if (selectedIndex >= fileCount) selectedIndex = max(0, fileCount - 1);
+    if (selectedFile >= fileCount) selectedFile = max(0, fileCount - 1);
 }
 
 void drawFileScreen() {
     M5.Lcd.fillScreen(THEME_BG);
     drawHeader("CANON - Files");
 
-    if (!sdReady) {
+    if (fileCount == 0) {
         M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
         M5.Lcd.setTextSize(2);
-        M5.Lcd.setCursor(20, 100);
-        M5.Lcd.print("No SD card detected");
-    } else if (fileCount == 0) {
-        M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
-        M5.Lcd.setTextSize(2);
-        M5.Lcd.setCursor(20, 100);
+        M5.Lcd.setCursor(20, 90);
         M5.Lcd.print("No files yet.");
-        M5.Lcd.setCursor(20, 130);
+        M5.Lcd.setCursor(20, 120);
         M5.Lcd.print("Plug into PC and run");
-        M5.Lcd.setCursor(20, 155);
+        M5.Lcd.setCursor(20, 145);
         M5.Lcd.print("uploader/upload.py");
     } else {
-        // Clamp scroll so selection is visible
-        if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-        if (selectedIndex >= scrollOffset + VISIBLE_ROWS) scrollOffset = selectedIndex - VISIBLE_ROWS + 1;
+        if (selectedFile < scrollOffset) scrollOffset = selectedFile;
+        if (selectedFile >= scrollOffset + VISIBLE_ROWS) scrollOffset = selectedFile - VISIBLE_ROWS + 1;
 
         for (int i = 0; i < VISIBLE_ROWS; i++) {
             int idx = scrollOffset + i;
             if (idx >= fileCount) break;
 
             int y = LIST_TOP + i * ROW_HEIGHT;
-            bool selected = (idx == selectedIndex);
+            bool selected = (idx == selectedFile);
 
             if (selected) {
                 M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_SELECT);
                 M5.Lcd.setTextColor(THEME_SELTEXT, THEME_SELECT);
             } else {
-                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_BG);
-                M5.Lcd.drawRect(8, y, 304, ROW_HEIGHT - 2, THEME_ACCENT);
-                M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+                M5.Lcd.fillRect(8, y, 304, ROW_HEIGHT - 2, THEME_PANEL);
+                M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
             }
             M5.Lcd.setTextSize(2);
             M5.Lcd.setCursor(16, y + 3);
@@ -123,25 +207,40 @@ void drawFileScreen() {
         }
     }
 
-    drawFooter("UP:A", "PET:B", "DOWN:C");
+    drawFooter("UP:A", "BACK:B", "DOWN:C");
 }
+
+// ---------------------------------------------------------------------
+// Pet screen
+// ---------------------------------------------------------------------
 
 void drawPetScreen() {
     M5.Lcd.fillScreen(THEME_BG);
     drawHeader("Kawazu Kumite");
 
-    M5.Lcd.fillRect(20, 40, 280, 150, THEME_BG);
-    M5.Lcd.drawRect(20, 40, 280, 150, THEME_ACCENT);
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
     frog.draw(160, 110);
 
-    M5.Lcd.setTextColor(THEME_TEXT, THEME_BG);
+    M5.Lcd.setTextColor(THEME_TEXT, THEME_PANEL);
     M5.Lcd.setTextSize(1);
     M5.Lcd.setCursor(30, 172);
     M5.Lcd.print("Sage Mode toad companion - always watching");
     M5.Lcd.setCursor(30, 184);
     M5.Lcd.print("your files for you.");
 
-    drawFooter("", "FILES:B", "");
+    drawFooter("", "BACK:B", "");
+}
+
+// ---------------------------------------------------------------------
+// Rasengan screen
+// ---------------------------------------------------------------------
+
+void drawRasenganScreen() {
+    M5.Lcd.fillScreen(THEME_BG);
+    drawHeader("Rasengan");
+    M5.Lcd.fillRect(20, 40, 280, 150, THEME_PANEL);
+    rasengan.draw(160, 115, 60);
+    drawFooter("", "BACK:B", "");
 }
 
 // ---------------------------------------------------------------------
@@ -176,15 +275,8 @@ void handleUpload() {
     uint32_t fileSize = (uint32_t)sizeBuf[0] | ((uint32_t)sizeBuf[1] << 8) |
                          ((uint32_t)sizeBuf[2] << 16) | ((uint32_t)sizeBuf[3] << 24);
 
-    if (!sdReady) {
-        Serial.print("ERR\n");
-        return;
-    }
-
-    if (!SD.exists(UPLOAD_DIR)) SD.mkdir(UPLOAD_DIR);
-
-    String path = String(UPLOAD_DIR) + "/" + String(nameBuf);
-    File f = SD.open(path, FILE_WRITE);
+    String path = "/" + String(nameBuf);
+    File f = SPIFFS.open(path, FILE_WRITE);
     if (!f) {
         Serial.print("ERR\n");
         return;
@@ -209,7 +301,7 @@ void handleUpload() {
 
         // Progress bar
         int pct = (int)(100 - (remaining * 100 / fileSize));
-        M5.Lcd.fillRect(16, 100, 288, 20, THEME_BG);
+        M5.Lcd.fillRect(16, 100, 288, 20, THEME_PANEL);
         M5.Lcd.drawRect(16, 100, 288, 20, THEME_ACCENT);
         M5.Lcd.fillRect(18, 102, (288 - 4) * pct / 100, 16, THEME_SELECT);
         M5.Lcd.setCursor(16, 130);
@@ -231,11 +323,10 @@ void setup() {
     M5.Power.begin();
     Serial.begin(115200);
 
-    sdReady = SD.begin();
-    if (sdReady && !SD.exists(UPLOAD_DIR)) SD.mkdir(UPLOAD_DIR);
+    SPIFFS.begin(true); // format on first use - no SD card needed
 
     refreshFileList();
-    drawFileScreen();
+    drawMenuScreen();
 }
 
 void loop() {
@@ -251,27 +342,66 @@ void loop() {
         }
     }
 
-    if (state == STATE_FILES) {
-        if (M5.BtnA.wasPressed()) {
-            if (selectedIndex > 0) selectedIndex--;
-            drawFileScreen();
-        }
-        if (M5.BtnC.wasPressed()) {
-            if (selectedIndex < fileCount - 1) selectedIndex++;
-            drawFileScreen();
-        }
-        if (M5.BtnB.wasPressed()) {
-            state = STATE_PET;
-            drawPetScreen();
-        }
-    } else { // STATE_PET
-        if (M5.BtnB.wasPressed()) {
-            state = STATE_FILES;
-            drawFileScreen();
-        }
-        frog.update();
-        M5.Lcd.fillRect(21, 41, 278, 148, THEME_BG);
-        frog.draw(160, 110);
-        delay(16); // ~60fps redraw for the pet animation
+    switch (state) {
+        case STATE_MENU:
+            if (M5.BtnA.wasPressed()) {
+                if (selectedMenu > 0) selectedMenu--;
+                drawMenuScreen();
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (selectedMenu < MENU_COUNT - 1) selectedMenu++;
+                drawMenuScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                if (selectedMenu == 0) {
+                    refreshFileList();
+                    state = STATE_FILES;
+                    drawFileScreen();
+                } else if (selectedMenu == 1) {
+                    state = STATE_PET;
+                    drawPetScreen();
+                } else {
+                    state = STATE_RASENGAN;
+                    drawRasenganScreen();
+                }
+            }
+            break;
+
+        case STATE_FILES:
+            if (M5.BtnA.wasPressed()) {
+                if (selectedFile > 0) selectedFile--;
+                drawFileScreen();
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (selectedFile < fileCount - 1) selectedFile++;
+                drawFileScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            break;
+
+        case STATE_PET:
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            frog.update();
+            M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
+            frog.draw(160, 110);
+            delay(16);
+            break;
+
+        case STATE_RASENGAN:
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            rasengan.update();
+            M5.Lcd.fillRect(21, 41, 278, 148, THEME_PANEL);
+            rasengan.draw(160, 115, 60);
+            delay(16);
+            break;
     }
 }
