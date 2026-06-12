@@ -32,7 +32,8 @@ enum AppState {
     STATE_WIFI_SCAN,
     STATE_BLE_SCAN,
     STATE_IR,
-    STATE_I2C
+    STATE_I2C,
+    STATE_ABOUT
 };
 AppState state = STATE_MENU;
 
@@ -65,8 +66,9 @@ const char* MENU_ITEMS[] = {
     "BLE Scanner",
     "IR Remote",
     "I2C Scanner",
+    "About",
 };
-const int MENU_COUNT = 10;
+const int MENU_COUNT = 11;
 const int MENU_ITEM_H = 34;
 const int MENU_ITEM_GAP = 37;
 const int MENU_ICON_PIXEL = 3;
@@ -188,6 +190,18 @@ const char* ICON_I2C[8] = {
 };
 uint16_t PALETTE_I2C[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
 
+const char* ICON_INFO[8] = {
+    ".111111.",
+    "1......1",
+    "1.0000.1",
+    "1.0000.1",
+    "1..00..1",
+    "1..00..1",
+    "1......1",
+    ".111111.",
+};
+uint16_t PALETTE_INFO[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
 void drawIcon(TFT_eSPI& gfx, int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
     for (int r = 0; r < 8; r++) {
         for (int c = 0; c < 8; c++) {
@@ -285,6 +299,7 @@ void drawMenuIcon(TFT_eSPI& gfx, int i, int x, int y) {
         case 7: drawIcon(gfx, x, y, ICON_BLE, PALETTE_BLE, MENU_ICON_PIXEL); break;
         case 8: drawIcon(gfx, x, y, ICON_IR, PALETTE_IR, MENU_ICON_PIXEL); break;
         case 9: drawIcon(gfx, x, y, ICON_I2C, PALETTE_I2C, MENU_ICON_PIXEL); break;
+        case 10: drawIcon(gfx, x, y, ICON_INFO, PALETTE_INFO, MENU_ICON_PIXEL); break;
     }
 }
 
@@ -812,6 +827,41 @@ void drawI2CScreen(bool animate = true) {
 }
 
 // ---------------------------------------------------------------------
+// About screen
+// ---------------------------------------------------------------------
+
+void drawAboutContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+
+    canvas.setTextColor(THEME_TEXT, THEME_PANEL);
+    canvas.setTextSize(2);
+
+    canvas.setCursor(32, 40 - CANVAS_TOP - yShift);
+    canvas.print("CANON v1.0");
+
+    canvas.setCursor(32, 70 - CANVAS_TOP - yShift);
+    canvas.printf("Free heap: %u KB", ESP.getFreeHeap() / 1024);
+
+    canvas.setCursor(32, 94 - CANVAS_TOP - yShift);
+    canvas.printf("Flash used: %u%%", (unsigned)(100UL * ESP.getSketchSize() / (ESP.getSketchSize() + ESP.getFreeSketchSpace())));
+
+    canvas.setCursor(32, 118 - CANVAS_TOP - yShift);
+    canvas.printf("SPIFFS: %u/%u KB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024));
+
+    canvas.setCursor(32, 142 - CANVAS_TOP - yShift);
+    canvas.printf("Uptime: %lu s", millis() / 1000);
+
+    canvas.setCursor(32, 166 - CANVAS_TOP - yShift);
+    canvas.print("github.com/nm86ydwdrv-code");
+}
+
+void drawAboutScreen(bool animate = true) {
+    drawHeader("About");
+    drawFooter("", "BACK:B", "");
+    if (animate) slideInContent(drawAboutContent); else pushContent(drawAboutContent);
+}
+
+// ---------------------------------------------------------------------
 // Serial upload protocol
 //   MAGIC(4) + nameLen(1) + name(nameLen) + fileSize(4, LE) + data(fileSize)
 //   Device replies "OK\n" or "ERR\n"
@@ -1001,6 +1051,10 @@ void loop() {
                         state = STATE_I2C;
                         drawI2CScreen();
                         break;
+                    case 10:
+                        state = STATE_ABOUT;
+                        drawAboutScreen();
+                        break;
                 }
             }
             break;
@@ -1126,6 +1180,13 @@ void loop() {
             if (M5.BtnB.wasPressed()) {
                 scanI2C();
                 drawI2CScreen(false);
+            }
+            break;
+
+        case STATE_ABOUT:
+            if (M5.BtnB.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
             }
             break;
 
