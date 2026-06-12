@@ -2,6 +2,7 @@
 #include <SPIFFS.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include <Preferences.h>
 #include <NimBLEDevice.h>
 #include "theme.h"
 #include "frog.h"
@@ -33,9 +34,17 @@ enum AppState {
     STATE_BLE_SCAN,
     STATE_IR,
     STATE_I2C,
-    STATE_ABOUT
+    STATE_ABOUT,
+    STATE_SETTINGS,
+    STATE_DICE,
+    STATE_SNAKE
 };
 AppState state = STATE_MENU;
+
+// Persisted settings
+Preferences prefs;
+int brightness = 200;
+bool soundOn = true;
 
 Frog frog;
 Rasengan rasengan;
@@ -67,8 +76,11 @@ const char* MENU_ITEMS[] = {
     "IR Remote",
     "I2C Scanner",
     "About",
+    "Settings",
+    "Dice Roll",
+    "Snake",
 };
-const int MENU_COUNT = 11;
+const int MENU_COUNT = 14;
 const int MENU_ITEM_H = 34;
 const int MENU_ITEM_GAP = 37;
 const int MENU_ICON_PIXEL = 3;
@@ -202,6 +214,42 @@ const char* ICON_INFO[8] = {
 };
 uint16_t PALETTE_INFO[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
 
+const char* ICON_GEAR[8] = {
+    "..0..0..",
+    "0.000.00",
+    ".01111..",
+    "0111110.",
+    ".0111110",
+    "..01111.",
+    "00.000.0",
+    "..0..0..",
+};
+uint16_t PALETTE_GEAR[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
+const char* ICON_DICE[8] = {
+    "00000000",
+    "01111110",
+    "01.11.10",
+    "0111111.",
+    ".1111110",
+    "01.11.10",
+    "01111110",
+    "00000000",
+};
+uint16_t PALETTE_DICE[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
+const char* ICON_SNAKE[8] = {
+    "........",
+    ".0000...",
+    ".0..0...",
+    ".0.00000",
+    ".0.....0",
+    ".00000.0",
+    "......0.",
+    "........",
+};
+uint16_t PALETTE_SNAKE[4] = {THEME_ACCENT, THEME_TEXT, 0, 0};
+
 void drawIcon(TFT_eSPI& gfx, int x, int y, const char* rows[8], uint16_t* palette, int pixel = 4) {
     for (int r = 0; r < 8; r++) {
         for (int c = 0; c < 8; c++) {
@@ -284,6 +332,22 @@ void pushContent(ContentFn fn) {
 }
 
 // ---------------------------------------------------------------------
+// Scrollbar (right edge of the content area)
+// ---------------------------------------------------------------------
+
+const int SCROLLBAR_TRACK_H = CANVAS_H * 2;
+
+void drawScrollbar(int yShift, int total, int visible, int scroll) {
+    if (total <= visible) return;
+
+    canvas.fillRect(314, -yShift, 4, SCROLLBAR_TRACK_H, THEME_PANEL);
+
+    int thumbH = max(8, SCROLLBAR_TRACK_H * visible / total);
+    int thumbY = (SCROLLBAR_TRACK_H - thumbH) * scroll / (total - visible);
+    canvas.fillRect(314, thumbY - yShift, 4, thumbH, THEME_ACCENT);
+}
+
+// ---------------------------------------------------------------------
 // Menu screen
 // ---------------------------------------------------------------------
 
@@ -300,6 +364,9 @@ void drawMenuIcon(TFT_eSPI& gfx, int i, int x, int y) {
         case 8: drawIcon(gfx, x, y, ICON_IR, PALETTE_IR, MENU_ICON_PIXEL); break;
         case 9: drawIcon(gfx, x, y, ICON_I2C, PALETTE_I2C, MENU_ICON_PIXEL); break;
         case 10: drawIcon(gfx, x, y, ICON_INFO, PALETTE_INFO, MENU_ICON_PIXEL); break;
+        case 11: drawIcon(gfx, x, y, ICON_GEAR, PALETTE_GEAR, MENU_ICON_PIXEL); break;
+        case 12: drawIcon(gfx, x, y, ICON_DICE, PALETTE_DICE, MENU_ICON_PIXEL); break;
+        case 13: drawIcon(gfx, x, y, ICON_SNAKE, PALETTE_SNAKE, MENU_ICON_PIXEL); break;
     }
 }
 
@@ -327,6 +394,8 @@ void drawMenuContent(int yShift) {
         canvas.setCursor(48, y + 9);
         canvas.print(MENU_ITEMS[i]);
     }
+
+    drawScrollbar(yShift, MENU_COUNT, MENU_VISIBLE, menuScroll);
 }
 
 void drawMenuScreen(bool animate = true) {
@@ -398,6 +467,8 @@ void drawFileContent(int yShift) {
             if (name.length() > 28) name = name.substring(0, 25) + "...";
             canvas.print(name);
         }
+
+        drawScrollbar(yShift, fileCount, VISIBLE_ROWS, scrollOffset);
     }
 }
 
@@ -862,6 +933,242 @@ void drawAboutScreen(bool animate = true) {
 }
 
 // ---------------------------------------------------------------------
+// Settings screen
+// ---------------------------------------------------------------------
+
+const char* SETTINGS_ITEMS[] = {"Brightness", "Sound", "Back"};
+const int SETTINGS_COUNT = 3;
+const int SETTINGS_BACK_INDEX = 2;
+int settingsSelected = 0;
+
+void applyBrightness() {
+    M5.Lcd.setBrightness(brightness);
+}
+
+void cycleBrightness() {
+    if (brightness == 64) brightness = 128;
+    else if (brightness == 128) brightness = 192;
+    else if (brightness == 192) brightness = 255;
+    else brightness = 64;
+    applyBrightness();
+    prefs.putInt("brt", brightness);
+}
+
+void toggleSound() {
+    soundOn = !soundOn;
+    prefs.putBool("snd", soundOn);
+    if (soundOn) M5.Speaker.tone(1800, 30);
+}
+
+void drawSettingsContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+
+    for (int i = 0; i < SETTINGS_COUNT; i++) {
+        int y = (40 - CANVAS_TOP - yShift) + i * 40;
+        bool selected = (i == settingsSelected);
+
+        if (selected) {
+            canvas.fillRect(8, y, 304, 32, THEME_SELECT);
+            canvas.setTextColor(THEME_SELTEXT, THEME_SELECT);
+        } else {
+            canvas.fillRect(8, y, 304, 32, THEME_PANEL);
+            canvas.setTextColor(THEME_TEXT, THEME_PANEL);
+        }
+
+        canvas.setTextSize(2);
+        canvas.setCursor(16, y + 8);
+
+        if (i == 0) {
+            canvas.printf("Brightness: %d", brightness);
+        } else if (i == 1) {
+            canvas.printf("Sound: %s", soundOn ? "ON" : "OFF");
+        } else {
+            canvas.print("Back");
+        }
+    }
+}
+
+void drawSettingsScreen(bool animate = true) {
+    drawHeader("Settings");
+    drawFooter("UP:A", "SELECT:B", "DOWN:C");
+    if (animate) slideInContent(drawSettingsContent); else pushContent(drawSettingsContent);
+}
+
+// ---------------------------------------------------------------------
+// Dice roller
+// ---------------------------------------------------------------------
+
+int diceValue = 1;
+
+void drawDiePips(int cx, int cy, int size, int value) {
+    canvas.fillRoundRect(cx - size / 2, cy - size / 2, size, size, 8, THEME_PANEL);
+    canvas.drawRoundRect(cx - size / 2, cy - size / 2, size, size, 8, THEME_ACCENT);
+
+    int r = size / 10;
+    int off = size / 4;
+
+    // Pip layout, true if a pip is drawn at that grid position:
+    //   topLeft topMid topRight / midLeft center midRight / botLeft botMid botRight
+    bool topLeft, topRight, midLeft, center, midRight, botLeft, botRight;
+    topLeft = topRight = midLeft = center = midRight = botLeft = botRight = false;
+
+    switch (value) {
+        case 1: center = true; break;
+        case 2: topLeft = botRight = true; break;
+        case 3: topLeft = center = botRight = true; break;
+        case 4: topLeft = topRight = botLeft = botRight = true; break;
+        case 5: topLeft = topRight = center = botLeft = botRight = true; break;
+        case 6: topLeft = topRight = midLeft = midRight = botLeft = botRight = true; break;
+    }
+
+    if (topLeft)  canvas.fillCircle(cx - off, cy - off, r, THEME_ACCENT);
+    if (topRight) canvas.fillCircle(cx + off, cy - off, r, THEME_ACCENT);
+    if (midLeft)  canvas.fillCircle(cx - off, cy, r, THEME_ACCENT);
+    if (center)   canvas.fillCircle(cx, cy, r, THEME_ACCENT);
+    if (midRight) canvas.fillCircle(cx + off, cy, r, THEME_ACCENT);
+    if (botLeft)  canvas.fillCircle(cx - off, cy + off, r, THEME_ACCENT);
+    if (botRight) canvas.fillCircle(cx + off, cy + off, r, THEME_ACCENT);
+}
+
+void drawDiceContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+
+    canvas.setTextColor(THEME_TEXT, THEME_BG);
+    canvas.setTextSize(2);
+    canvas.setCursor(90, 50 - CANVAS_TOP - yShift);
+    canvas.print("Press B to roll");
+
+    drawDiePips(160, 130 - CANVAS_TOP - yShift, 100, diceValue);
+}
+
+void drawDiceScreen(bool animate = true) {
+    drawHeader("Dice Roll");
+    drawFooter("BACK:A", "ROLL:B", "");
+    if (animate) slideInContent(drawDiceContent); else pushContent(drawDiceContent);
+}
+
+// ---------------------------------------------------------------------
+// Snake game
+// ---------------------------------------------------------------------
+
+const int SNAKE_COLS = 20;
+const int SNAKE_ROWS = 12;
+const int SNAKE_CELL = 16;
+const int SNAKE_MAX_LEN = SNAKE_COLS * SNAKE_ROWS;
+
+int8_t snakeBodyX[SNAKE_MAX_LEN];
+int8_t snakeBodyY[SNAKE_MAX_LEN];
+int snakeLen;
+int snakeDirX, snakeDirY;
+int snakeFoodX, snakeFoodY;
+bool snakeOver;
+bool snakeStarted;
+unsigned long snakeLastStep;
+const unsigned long SNAKE_STEP_MS = 160;
+
+void placeSnakeFood() {
+    snakeFoodX = random(0, SNAKE_COLS);
+    snakeFoodY = random(0, SNAKE_ROWS);
+}
+
+void initSnake() {
+    snakeLen = 3;
+    for (int i = 0; i < snakeLen; i++) {
+        snakeBodyX[i] = SNAKE_COLS / 2 - i;
+        snakeBodyY[i] = SNAKE_ROWS / 2;
+    }
+    snakeDirX = 1;
+    snakeDirY = 0;
+    snakeOver = false;
+    snakeStarted = false;
+    snakeLastStep = millis();
+    placeSnakeFood();
+}
+
+void updateSnake() {
+    int newX = snakeBodyX[0] + snakeDirX;
+    int newY = snakeBodyY[0] + snakeDirY;
+
+    if (newX < 0 || newX >= SNAKE_COLS || newY < 0 || newY >= SNAKE_ROWS) {
+        snakeOver = true;
+        return;
+    }
+    for (int i = 0; i < snakeLen; i++) {
+        if (snakeBodyX[i] == newX && snakeBodyY[i] == newY) {
+            snakeOver = true;
+            return;
+        }
+    }
+
+    bool ate = (newX == snakeFoodX && newY == snakeFoodY);
+    if (ate && snakeLen < SNAKE_MAX_LEN) snakeLen++;
+
+    for (int i = snakeLen - 1; i > 0; i--) {
+        snakeBodyX[i] = snakeBodyX[i - 1];
+        snakeBodyY[i] = snakeBodyY[i - 1];
+    }
+    snakeBodyX[0] = newX;
+    snakeBodyY[0] = newY;
+
+    if (ate) {
+        if (soundOn) M5.Speaker.tone(2200, 30);
+        placeSnakeFood();
+    }
+}
+
+void snakeTurnLeft() {
+    int dx = snakeDirX, dy = snakeDirY;
+    snakeDirX = dy;
+    snakeDirY = -dx;
+}
+
+void snakeTurnRight() {
+    int dx = snakeDirX, dy = snakeDirY;
+    snakeDirX = -dy;
+    snakeDirY = dx;
+}
+
+void drawSnakeContent(int yShift) {
+    canvas.fillSprite(THEME_BG);
+
+    if (snakeOver) {
+        canvas.setTextColor(THEME_TEXT, THEME_BG);
+        canvas.setTextSize(2);
+        canvas.setCursor(70, 80 - CANVAS_TOP - yShift);
+        canvas.print("GAME OVER");
+        canvas.setCursor(50, 110 - CANVAS_TOP - yShift);
+        canvas.printf("Score: %d", snakeLen - 3);
+        canvas.setCursor(40, 140 - CANVAS_TOP - yShift);
+        canvas.print("Press B to restart");
+        return;
+    }
+
+    if (!snakeStarted) {
+        canvas.setTextColor(THEME_TEXT, THEME_BG);
+        canvas.setTextSize(2);
+        canvas.setCursor(60, 100 - CANVAS_TOP - yShift);
+        canvas.print("Press B to start");
+        return;
+    }
+
+    // Food
+    canvas.fillRect(snakeFoodX * SNAKE_CELL, snakeFoodY * SNAKE_CELL - yShift,
+                    SNAKE_CELL, SNAKE_CELL, THEME_ACCENT);
+
+    // Snake body
+    for (int i = 0; i < snakeLen; i++) {
+        canvas.fillRect(snakeBodyX[i] * SNAKE_CELL, snakeBodyY[i] * SNAKE_CELL - yShift,
+                        SNAKE_CELL - 1, SNAKE_CELL - 1, THEME_SELECT);
+    }
+}
+
+void drawSnakeScreen(bool animate = true) {
+    drawHeader("Snake");
+    drawFooter("TURN:A", "GO:B", "TURN:C");
+    if (animate) slideInContent(drawSnakeContent); else pushContent(drawSnakeContent);
+}
+
+// ---------------------------------------------------------------------
 // Serial upload protocol
 //   MAGIC(4) + nameLen(1) + name(nameLen) + fileSize(4, LE) + data(fileSize)
 //   Device replies "OK\n" or "ERR\n"
@@ -949,8 +1256,22 @@ void drawBootSplash() {
     for (int i = 0; i < 40; i++) {
         rasengan.update();
         rasengan.draw(160, 160, 55);
+
+        if (soundOn) {
+            if (i < 24) {
+                M5.Speaker.tone(280 + i * 35, 40);
+            } else if (i == 24) {
+                M5.Speaker.tone(1900, 220);
+            } else if (i == 30) {
+                M5.Speaker.tone(900, 150);
+            }
+        }
+
         delay(30);
     }
+
+    if (soundOn) M5.Speaker.tone(180, 120);
+    delay(150);
 
     M5.Lcd.fillScreen(THEME_BG);
 }
@@ -959,6 +1280,13 @@ void setup() {
     M5.begin();
     M5.Power.begin();
     Serial.begin(115200);
+
+    prefs.begin("canon", false);
+    brightness = prefs.getInt("brt", 200);
+    soundOn = prefs.getBool("snd", true);
+    applyBrightness();
+
+    randomSeed(analogRead(36));
 
     SPIFFS.begin(true); // format on first use - no SD card needed
 
@@ -975,10 +1303,12 @@ void loop() {
     M5.update();
 
     // Button click feedback
-    if (M5.BtnA.wasPressed() || M5.BtnC.wasPressed()) {
-        M5.Speaker.tone(1800, 30);
-    } else if (M5.BtnB.wasPressed()) {
-        M5.Speaker.tone(2400, 40);
+    if (soundOn) {
+        if (M5.BtnA.wasPressed() || M5.BtnC.wasPressed()) {
+            M5.Speaker.tone(1800, 30);
+        } else if (M5.BtnB.wasPressed()) {
+            M5.Speaker.tone(2400, 40);
+        }
     }
 
     // Check for an incoming file transfer
@@ -1054,6 +1384,21 @@ void loop() {
                     case 10:
                         state = STATE_ABOUT;
                         drawAboutScreen();
+                        break;
+                    case 11:
+                        settingsSelected = 0;
+                        state = STATE_SETTINGS;
+                        drawSettingsScreen();
+                        break;
+                    case 12:
+                        diceValue = random(1, 7);
+                        state = STATE_DICE;
+                        drawDiceScreen();
+                        break;
+                    case 13:
+                        initSnake();
+                        state = STATE_SNAKE;
+                        drawSnakeScreen();
                         break;
                 }
             }
@@ -1187,6 +1532,66 @@ void loop() {
             if (M5.BtnB.wasPressed()) {
                 state = STATE_MENU;
                 drawMenuScreen();
+            }
+            break;
+
+        case STATE_SETTINGS:
+            if (M5.BtnA.wasPressed()) {
+                if (settingsSelected > 0) settingsSelected--;
+                drawSettingsScreen(false);
+            }
+            if (M5.BtnC.wasPressed()) {
+                if (settingsSelected < SETTINGS_COUNT - 1) settingsSelected++;
+                drawSettingsScreen(false);
+            }
+            if (M5.BtnB.wasPressed()) {
+                if (settingsSelected == SETTINGS_BACK_INDEX) {
+                    state = STATE_MENU;
+                    drawMenuScreen();
+                } else if (settingsSelected == 0) {
+                    cycleBrightness();
+                    drawSettingsScreen(false);
+                } else if (settingsSelected == 1) {
+                    toggleSound();
+                    drawSettingsScreen(false);
+                }
+            }
+            break;
+
+        case STATE_DICE:
+            if (M5.BtnA.wasPressed()) {
+                state = STATE_MENU;
+                drawMenuScreen();
+            }
+            if (M5.BtnB.wasPressed()) {
+                diceValue = random(1, 7);
+                if (soundOn) M5.Speaker.tone(1200, 60);
+                drawDiceScreen(false);
+            }
+            break;
+
+        case STATE_SNAKE:
+            if (M5.BtnA.wasPressed() && snakeStarted && !snakeOver) {
+                snakeTurnLeft();
+            }
+            if (M5.BtnC.wasPressed() && snakeStarted && !snakeOver) {
+                snakeTurnRight();
+            }
+            if (M5.BtnB.wasPressed()) {
+                if (!snakeStarted || snakeOver) {
+                    initSnake();
+                    snakeStarted = true;
+                    pushContent(drawSnakeContent);
+                } else {
+                    state = STATE_MENU;
+                    drawMenuScreen();
+                }
+            }
+            if (snakeStarted && !snakeOver && millis() - snakeLastStep >= SNAKE_STEP_MS) {
+                updateSnake();
+                snakeLastStep = millis();
+                pushContent(drawSnakeContent);
+                if (snakeOver && soundOn) M5.Speaker.tone(200, 200);
             }
             break;
 

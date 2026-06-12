@@ -9,7 +9,8 @@ WiFi captive portal for testing your own devices/network.
 
 - Bruce-firmware-style UI: every screen transition slides in from the
   right, with in-place updates (selection/scroll/rescans) redrawing instantly
-- Pixelated, scrollable menu (10 sections), light-blue themed
+- Pixelated, scrollable menu (14 sections), light-blue themed, with a
+  scroll position indicator on long lists
 - File browser backed by the device's internal flash (SPIFFS) - **no SD card required**
 - Push files from your PC to the device over USB serial (no re-flashing needed)
 - Kawazu Kumite: an animated pixel-art sage-mode toad (idle bob, blinking, tongue flick)
@@ -23,9 +24,13 @@ WiFi captive portal for testing your own devices/network.
 - IR Remote: sends common NEC-protocol TV power codes via the IR LED on GPIO 12
 - I2C Scanner: scans the Grove port (pins 21/22) for connected I2C devices
 - About: device info screen (free heap, flash usage, SPIFFS usage, uptime)
-- Boot splash: "TAKE THIS RASENGAN!" with an animated Rasengan on startup
+- Boot splash: "TAKE THIS RASENGAN!" with an animated Rasengan and a
+  chiptune charge-up/blast sound effect on startup
 - Battery indicator: live battery percentage (and charging status) in the header bar
 - Button click feedback: short tones on every button press
+- Settings: adjustable screen brightness and a sound on/off toggle, saved on-device
+- Dice Roll: pixel-art d6 with realistic pip layouts
+- Snake: classic Snake game with score tracking
 
 ## Hardware
 
