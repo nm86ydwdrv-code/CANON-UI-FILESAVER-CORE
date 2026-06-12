@@ -209,6 +209,14 @@ void drawHeader(const char* title) {
     M5.Lcd.setTextSize(2);
     M5.Lcd.setCursor(8, 4);
     M5.Lcd.print(title);
+
+    int8_t batt = M5.Power.getBatteryLevel();
+    if (batt >= 0) {
+        char buf[6];
+        snprintf(buf, sizeof(buf), "%s%d%%", M5.Power.isCharging() ? "+" : "", batt);
+        M5.Lcd.setCursor(320 - 6 * 6 * 2 - 8, 4);
+        M5.Lcd.print(buf);
+    }
 }
 
 void drawFooter(const char* a, const char* b, const char* c) {
@@ -915,6 +923,13 @@ void setup() {
 
 void loop() {
     M5.update();
+
+    // Button click feedback
+    if (M5.BtnA.wasPressed() || M5.BtnC.wasPressed()) {
+        M5.Speaker.tone(1800, 30);
+    } else if (M5.BtnB.wasPressed()) {
+        M5.Speaker.tone(2400, 40);
+    }
 
     // Check for an incoming file transfer
     if (Serial.available() >= MAGIC_LEN) {

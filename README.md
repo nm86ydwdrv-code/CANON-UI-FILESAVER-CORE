@@ -22,6 +22,9 @@ WiFi captive portal for testing your own devices/network.
 - BLE Scanner: lists nearby Bluetooth Low Energy devices with name, address, and RSSI
 - IR Remote: sends common NEC-protocol TV power codes via the IR LED on GPIO 12
 - I2C Scanner: scans the Grove port (pins 21/22) for connected I2C devices
+- Boot splash: "TAKE THIS RASENGAN!" with an animated Rasengan on startup
+- Battery indicator: live battery percentage (and charging status) in the header bar
+- Button click feedback: short tones on every button press
 
 ## Hardware
 
