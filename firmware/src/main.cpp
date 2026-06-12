@@ -878,6 +878,25 @@ void handleUpload() {
 
 // ---------------------------------------------------------------------
 
+void drawBootSplash() {
+    M5.Lcd.fillScreen(THEME_BG);
+
+    M5.Lcd.setTextColor(THEME_ACCENT, THEME_BG);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.setCursor(18, 30);
+    M5.Lcd.println("TAKE THIS");
+    M5.Lcd.setCursor(18, 65);
+    M5.Lcd.println("RASENGAN!");
+
+    for (int i = 0; i < 40; i++) {
+        rasengan.update();
+        rasengan.draw(160, 160, 55);
+        delay(30);
+    }
+
+    M5.Lcd.fillScreen(THEME_BG);
+}
+
 void setup() {
     M5.begin();
     M5.Power.begin();
@@ -887,6 +906,8 @@ void setup() {
 
     canvas.setColorDepth(16);
     canvas.createSprite(320, CANVAS_H);
+
+    drawBootSplash();
 
     refreshFileList();
     drawMenuScreen();
